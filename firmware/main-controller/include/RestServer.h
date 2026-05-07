@@ -1,5 +1,6 @@
 #pragma once
 #include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
 #include "ZoneController.h"
 
 class RestServer {

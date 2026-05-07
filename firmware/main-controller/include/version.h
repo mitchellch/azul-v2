@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 
 // Manually bump these when making a release.
 // Major: breaking change to API or BLE interface
@@ -16,10 +17,16 @@
 #define FW_GIT_DIRTY 0
 #endif
 
-// Full version string: "0.1.0-abc1234" or "0.1.0-abc1234-dirty"
-#define _FW_VER_STR_(a,b,c) #a "." #b "." #c
-#define _FW_VER_STR(a,b,c) _FW_VER_STR_(a,b,c)
-#define FW_VERSION_BASE _FW_VER_STR(FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH)
-#define FW_VERSION_FULL (FW_GIT_DIRTY \
-  ? FW_VERSION_BASE "-" FW_GIT_SHA "-dirty" \
-  : FW_VERSION_BASE "-" FW_GIT_SHA)
+#define _FW_STR_(x) #x
+#define _FW_STR(x) _FW_STR_(x)
+#define FW_VERSION_BASE \
+    _FW_STR(FW_VERSION_MAJOR) "." \
+    _FW_STR(FW_VERSION_MINOR) "." \
+    _FW_STR(FW_VERSION_PATCH)
+
+// Returns "0.1.0-abc1234" or "0.1.0-abc1234-dirty"
+inline String fwVersionFull() {
+    String v = FW_VERSION_BASE "-" FW_GIT_SHA;
+    if (FW_GIT_DIRTY) v += "-dirty";
+    return v;
+}

@@ -60,9 +60,9 @@ void RestServer::registerRoutes() {
     "^/api/zones/([0-9]+)$",
     [this](AsyncWebServerRequest* req, JsonVariant& body) {
       handleUpdateZone(req, body);
-    },
-    HTTP_PUT
+    }
   );
+  updateHandler->setMethod(HTTP_PUT);
   _server.addHandler(updateHandler);
 }
 
@@ -73,7 +73,7 @@ static void addCors(AsyncWebServerResponse* res) {
 void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
   JsonDocument doc;
   doc["device"] = "Azul Main Controller";
-  doc["firmware"] = FW_VERSION_FULL;
+  doc["firmware"] = fwVersionFull().c_str();
   doc["ip"] = WiFi.localIP().toString();
   doc["uptime_seconds"] = millis() / 1000;
   doc["zones_running"] = _zones.isAnyZoneRunning();
@@ -150,7 +150,7 @@ void RestServer::handleStopAll(AsyncWebServerRequest* req) {
 
 void RestServer::handleUpdateZone(AsyncWebServerRequest* req, JsonVariant& body) {
   uint8_t id = atoi(req->pathArg(0).c_str());
-  if (!body.containsKey("name")) {
+  if (!body["name"].is<const char*>()) {
     req->send(400, "application/json", "{\"error\":\"name required\"}");
     return;
   }

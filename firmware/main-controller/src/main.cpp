@@ -9,7 +9,7 @@ ZoneController zones;
 WiFiManager    wifiManager;
 RestServer     restServer(zones);
 BleServer      bleServer(zones);
-CLI            cli(zones);
+CLI            serialCli(zones);
 
 #define BLE_NOTIFY_INTERVAL_MS 5000
 unsigned long lastBleNotify = 0;
@@ -37,7 +37,7 @@ void setup() {
   bleServer.begin();
 
   // CLI always starts
-  cli.begin();
+  serialCli.begin();
 
   Serial.println("[Azul] Boot complete");
 }
@@ -49,7 +49,7 @@ void loop() {
   zones.tick();
 
   // CLI input
-  cli.poll();
+  serialCli.poll();
 
   // BLE status notifications
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {

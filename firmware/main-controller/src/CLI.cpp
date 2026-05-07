@@ -10,7 +10,7 @@ CLI::CLI(ZoneController& zones) : _zones(zones), _bufLen(0) {
 void CLI::begin() {
   Serial.println("\r\n=============================");
   Serial.println("  Azul Main Controller CLI");
-  Serial.printf( "  Firmware: %s\r\n", FW_VERSION_FULL);
+  Serial.printf( "  Firmware: %s\r\n", fwVersionFull().c_str());
   Serial.println("  Type 'help' for commands");
   Serial.println("=============================\r\n");
   Serial.print("> ");
@@ -91,14 +91,14 @@ void CLI::printHelp() {
 }
 
 void CLI::cmdStatus() {
-  Serial.printf("Firmware:      %s\r\n", FW_VERSION_FULL);
+  Serial.printf("Firmware:      %s\r\n", fwVersionFull().c_str());
   Serial.printf("Uptime:        %lu seconds\r\n", millis() / 1000);
   Serial.printf("WiFi:          %s\r\n", WiFi.isConnected() ? WiFi.localIP().toString().c_str() : "disconnected");
   Serial.printf("Zones running: %s\r\n", _zones.isAnyZoneRunning() ? "yes" : "no");
 }
 
 void CLI::cmdVersion() {
-  Serial.printf("Firmware: %s\r\n", FW_VERSION_FULL);
+  Serial.printf("Firmware: %s\r\n", fwVersionFull().c_str());
   Serial.printf("Version:  %d.%d.%d\r\n", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH);
   Serial.printf("Git SHA:  %s%s\r\n", FW_GIT_SHA, FW_GIT_DIRTY ? " (dirty)" : "");
 }

@@ -7,7 +7,7 @@ class ZoneCmdCallback : public NimBLECharacteristicCallbacks {
 public:
   ZoneCmdCallback(ZoneController& zones) : _zones(zones) {}
 
-  void onWrite(NimBLECharacteristic* chr, NimBLEConnInfo& info) override {
+  void onWrite(NimBLECharacteristic* chr) override {
     std::string val = chr->getValue();
     if (val.empty()) return;
 
@@ -96,7 +96,7 @@ void BleServer::notifyStatus() {
 
 String BleServer::buildStatusJson() const {
   JsonDocument doc;
-  doc["firmware"] = FW_VERSION_FULL;
+  doc["firmware"] = fwVersionFull().c_str();
   doc["uptime"] = millis() / 1000;
   doc["zones_running"] = _zones.isAnyZoneRunning();
   String out;
