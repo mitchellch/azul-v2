@@ -188,6 +188,45 @@ pio test -e native -v
 
 ---
 
+## Integration Tests
+
+Tests run against a live device over WiFi — ESP32 must be flashed and connected to the same network.
+
+```bash
+cd firmware/main-controller
+
+# Install dependencies (once)
+pip3 install -r tests/integration/requirements.txt
+
+# Run against the default IP (192.168.1.207)
+python3 -m pytest tests/integration/ -v
+
+# Run against a specific device IP
+python3 -m pytest tests/integration/ --host=192.168.1.42 -v
+```
+
+**Expected output:**
+
+```
+============================= 37 passed in 22.59s ==============================
+```
+
+### What is tested
+
+| File | Count | Covers |
+|---|---|---|
+| `test_status.py` | 7 | Device fields, firmware format, `zones_running` flag |
+| `test_zones.py` | 9 | Zone list shape, count, field validation, single zone, invalid ID |
+| `test_zone_control.py` | 14 | Start/stop/stop-all, timer countdown, auto-expiry, error handling |
+| `test_zone_update.py` | 7 | Zone rename, persistence, 400/404 error handling |
+
+### Test infrastructure
+
+- **Framework:** pytest + requests
+- **`conftest.py`:** `--host` CLI option, session-scoped API fixture, `autouse` fixture that stops all zones before and after every test to ensure a clean slate
+
+---
+
 ## REST API Quick Reference
 
 ```
