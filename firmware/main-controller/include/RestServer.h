@@ -2,30 +2,54 @@
 #include <ESPAsyncWebServer.h>
 #include <AsyncJson.h>
 #include "ZoneController.h"
+#include "Scheduler.h"
+#include "AuditLog.h"
+#include "ChangeLog.h"
+#include "TimeManager.h"
 
 class RestServer {
 public:
-  RestServer(ZoneController& zones);
+  RestServer(ZoneController& zones, Scheduler& scheduler,
+             AuditLog& audit, ChangeLog& changelog, TimeManager& time);
   void begin();
 
 private:
-  AsyncWebServer _server;
+  AsyncWebServer  _server;
   ZoneController& _zones;
+  Scheduler&      _scheduler;
+  AuditLog&       _audit;
+  ChangeLog&      _changelog;
+  TimeManager&    _time;
 
   void registerRoutes();
 
-  // GET /api/status
+  // Zones
   void handleGetStatus(AsyncWebServerRequest* req);
-  // GET /api/zones
   void handleGetZones(AsyncWebServerRequest* req);
-  // GET /api/zones/:id
   void handleGetZone(AsyncWebServerRequest* req);
-  // POST /api/zones/:id/start  body: {"duration":60}
   void handleStartZone(AsyncWebServerRequest* req, JsonVariant& body);
-  // POST /api/zones/:id/stop
   void handleStopZone(AsyncWebServerRequest* req);
-  // POST /api/zones/stop-all
   void handleStopAll(AsyncWebServerRequest* req);
-  // PUT /api/zones/:id  body: {"name":"Front Lawn"}
   void handleUpdateZone(AsyncWebServerRequest* req, JsonVariant& body);
+
+  // Schedules
+  void handleGetSchedules(AsyncWebServerRequest* req);
+  void handleGetActiveSchedule(AsyncWebServerRequest* req);
+  void handleGetSchedule(AsyncWebServerRequest* req);
+  void handleCreateSchedule(AsyncWebServerRequest* req, JsonVariant& body);
+  void handleUpdateSchedule(AsyncWebServerRequest* req, JsonVariant& body);
+  void handleDeleteSchedule(AsyncWebServerRequest* req);
+  void handleActivateSchedule(AsyncWebServerRequest* req);
+
+  // Logs
+  void handleGetLog(AsyncWebServerRequest* req);
+  void handleGetChangeLog(AsyncWebServerRequest* req);
+
+  // Time
+  void handleGetTime(AsyncWebServerRequest* req);
+  void handleSetTime(AsyncWebServerRequest* req, JsonVariant& body);
+
+  // Helpers
+  void scheduleToJson(const Schedule& s, JsonObject& obj) const;
+  bool jsonToSchedule(const JsonVariant& body, Schedule& s, char* errOut) const;
 };

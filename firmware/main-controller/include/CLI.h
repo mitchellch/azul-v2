@@ -1,45 +1,40 @@
 #pragma once
 #include <Arduino.h>
 #include "ZoneController.h"
+#include "Scheduler.h"
+#include "AuditLog.h"
 
 class CLI {
 public:
-  CLI(ZoneController& zones);
+  CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit);
   void begin();
-
-  // Call from main loop — reads available serial bytes and dispatches commands
   void poll();
-
-  // Reprint "> " plus current input buffer — called by Logger after background messages
   void printPrompt();
 
 private:
   ZoneController& _zones;
+  Scheduler&      _scheduler;
+  AuditLog&       _audit;
 
-  // Input buffer
   char _buf[128];
   uint8_t _bufLen;
 
-  // Command history — circular buffer of last HISTORY_SIZE commands
   static const uint8_t HISTORY_SIZE = 10;
-  char _history[HISTORY_SIZE][128];
-  uint8_t _historyCount;  // total entries stored (capped at HISTORY_SIZE)
-  uint8_t _historyHead;   // index of the most recently stored entry
-  int8_t  _historyPos;    // -1 = not browsing; 0 = most recent, 1 = one before, etc.
-
-  // Escape sequence state machine for arrow keys
-  uint8_t _escState;      // 0 = normal, 1 = got ESC, 2 = got ESC [
+  char    _history[HISTORY_SIZE][128];
+  uint8_t _historyCount;
+  uint8_t _historyHead;
+  int8_t  _historyPos;
+  uint8_t _escState;
 
   void historyPush(const char* line);
-  void historyLoad(int8_t pos);  // load history[pos] into _buf and reprint line
-  void clearInputLine();         // erase current typed line on terminal
-  void cmdComplete();            // TAB completion
-  uint8_t findMatches(const char** matches, uint8_t maxMatches); // prefix match
+  void historyLoad(int8_t pos);
+  void clearInputLine();
+  void cmdComplete();
+  uint8_t findMatches(const char** matches, uint8_t maxMatches);
 
   void dispatch(const char* line);
   void printHelp();
 
-  // Commands
   void cmdStatus();
   void cmdZones();
   void cmdStart(const char* args);
@@ -48,5 +43,8 @@ private:
   void cmdWifiSet(const char* args);
   void cmdWifiStatus();
   void cmdVersion();
+  void cmdSchedule();
+  void cmdSchedules();
+  void cmdLog(const char* args);
   void cmdReboot();
 };

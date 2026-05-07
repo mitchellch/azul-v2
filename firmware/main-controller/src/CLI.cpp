@@ -20,8 +20,8 @@ static void reprintPrompt() {
   if (s_instance) s_instance->printPrompt();
 }
 
-CLI::CLI(ZoneController& zones)
-  : _zones(zones), _bufLen(0),
+CLI::CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit)
+  : _zones(zones), _scheduler(scheduler), _audit(audit), _bufLen(0),
     _historyCount(0), _historyHead(0), _historyPos(-1),
     _escState(0) {
   memset(_buf, 0, sizeof(_buf));
@@ -205,7 +205,8 @@ void CLI::poll() {
 uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
   static const char* cmds[] = {
     "help", "status", "zones", "start", "stop", "stop-all",
-    "wifi-set", "wifi-status", "version", "reboot"
+    "wifi-set", "wifi-status", "version",
+    "schedule", "schedules", "log", "reboot"
   };
   static const uint8_t cmdCount = sizeof(cmds) / sizeof(cmds[0]);
 
@@ -263,6 +264,9 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "wifi-set")    == 0) cmdWifiSet(args);
   else if (strcmp(cmd, "wifi-status") == 0) cmdWifiStatus();
   else if (strcmp(cmd, "version")     == 0) cmdVersion();
+  else if (strcmp(cmd, "schedule")    == 0) cmdSchedule();
+  else if (strcmp(cmd, "schedules")   == 0) cmdSchedules();
+  else if (strcmp(cmd, "log")         == 0) cmdLog(args);
   else if (strcmp(cmd, "reboot")      == 0) cmdReboot();
   else Serial.printf("Unknown command: '%s'. Type 'help'.\r\n", cmd);
 }
@@ -279,6 +283,9 @@ void CLI::printHelp() {
   Serial.println("  version                   Show firmware version");
   Serial.println("  reboot                    Reboot the device");
   Serial.println("  Up/Down arrows            Browse command history");
+  Serial.println("  schedule                  Show active schedule");
+  Serial.println("  schedules                 List all stored schedules");
+  Serial.println("  log [N]                   Show last N audit entries (default 20)");
   Serial.println("  TAB                       Complete or list matching commands");
   Serial.println("  Ctrl-U                    Clear current line");
 }
@@ -382,6 +389,90 @@ void CLI::cmdWifiStatus() {
     } else {
       Serial.println("No credentials saved");
     }
+  }
+}
+
+void CLI::cmdSchedule() {
+  const Schedule* s = _scheduler.getActiveSchedule();
+  if (!s) { Serial.println("No active schedule"); return; }
+
+  char startBuf[11], endBuf[11];
+  TimeManager::daysToIsoDate(s->startDate, startBuf);
+  if (s->endDate == 0xFFFFFFFF) {
+    strlcpy(endBuf, "open-ended", sizeof(endBuf));
+  } else {
+    TimeManager::daysToIsoDate(s->endDate, endBuf);
+  }
+
+  Serial.printf("Name:     %s%s\r\n", s->name,
+                _scheduler.isKeepaliveActive() ? " [KEEPALIVE]" : "");
+  Serial.printf("UUID:     %s\r\n", s->uuid);
+  Serial.printf("Period:   %s to %s\r\n", startBuf, endBuf);
+  Serial.printf("NTP:      %s\r\n", _scheduler.isTimeSynced() ? "synced" : "NOT SYNCED — scheduler paused");
+  Serial.println("Runs:");
+  Serial.println("  Zone  Days     Time   Duration");
+  Serial.println("  ----  -------  -----  --------");
+
+  static const char* dayNames[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
+  for (uint8_t i = 0; i < s->runCount; i++) {
+    const ScheduleRun& r = s->runs[i];
+    char days[16] = {0};
+    for (uint8_t d = 0; d < 7; d++) {
+      if (r.dayMask & (1 << d)) { strcat(days, dayNames[d]); strcat(days, " "); }
+    }
+    Serial.printf("  %-4d  %-7s  %02d:%02d  %ds\r\n",
+                  r.zoneId, days, r.hour, r.minute, r.durationSeconds);
+  }
+}
+
+void CLI::cmdSchedules() {
+  Schedule all[SCHEDULE_RING_SIZE];
+  uint8_t count = 0;
+  _scheduler.getAllSchedules(all, count);
+
+  if (count == 0) { Serial.println("No schedules stored"); return; }
+
+  char activeUuid[37] = {0};
+  const Schedule* active = _scheduler.getActiveSchedule();
+  if (active) strlcpy(activeUuid, active->uuid, sizeof(activeUuid));
+
+  Serial.println("UUID                                  Name             Start       End");
+  Serial.println("------------------------------------  ---------------  ----------  ----------");
+  for (uint8_t i = 0; i < count; i++) {
+    char startBuf[11], endBuf[11];
+    TimeManager::daysToIsoDate(all[i].startDate, startBuf);
+    if (all[i].endDate == 0xFFFFFFFF) {
+      strlcpy(endBuf, "open-ended", sizeof(endBuf));
+    } else {
+      TimeManager::daysToIsoDate(all[i].endDate, endBuf);
+    }
+    bool isActive = (strcmp(all[i].uuid, activeUuid) == 0);
+    Serial.printf("%-36s  %-15s  %-10s  %-10s%s\r\n",
+                  all[i].uuid, all[i].name, startBuf, endBuf,
+                  isActive ? " *" : "");
+  }
+}
+
+void CLI::cmdLog(const char* args) {
+  uint16_t n = 20;
+  if (args && args[0] != '\0') n = atoi(args);
+  if (n == 0 || n > AUDIT_RING_SIZE) n = 20;
+
+  AuditEntry entries[AUDIT_RING_SIZE];
+  uint16_t count = _audit.getRecent(entries, n);
+
+  if (count == 0) { Serial.println("No log entries"); return; }
+
+  Serial.println("Compact              Zone  Duration  Source");
+  Serial.println("-------------------  ----  --------  ------");
+  static const char* srcNames[] = {"scheduler","REST","BLE","CLI"};
+  for (uint16_t i = 0; i < count; i++) {
+    char compact[32];
+    AuditLog::formatEntry(entries[i], compact, sizeof(compact));
+    uint8_t src = entries[i].source;
+    Serial.printf("%-20s %-4d  %-8d  %s\r\n",
+                  compact, entries[i].zoneId, entries[i].durationSeconds,
+                  (src < 4) ? srcNames[src] : "?");
   }
 }
 
