@@ -1,5 +1,9 @@
 #pragma once
+#ifdef UNIT_TEST
+#include "arduino_stub.h"
+#else
 #include <Arduino.h>
+#endif
 
 #define MAX_ZONES 8
 
