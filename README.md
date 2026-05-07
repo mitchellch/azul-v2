@@ -13,9 +13,9 @@ This repository is a monorepo containing all components of the Azul system.
 - **`docs/`**: Contains all project documentation, including architecture diagrams, specifications, and bills of materials.
 
 ## Key Documentation
-- **[Overall Architecture](docs/azul-architecture.md):** A high-level overview of the entire system, its components, and how they interact.
-- **[Zone Extender Specification](docs/azul-zone-extender.md):** Detailed technical specifications for the battery-powered, LoRa-based zone controller.
-- **[Main Controller Bill of Materials](docs/main-controller-bom.md):** A complete list of electronic components for the main, wall-powered controller.
+- **[Overall Architecture](docs/design/architecture.md):** A high-level overview of the entire system, its components, and how they interact.
+- **[Zone Extender Specification](docs/design/zone-extender-spec.md):** Detailed technical specifications for the battery-powered, LoRa-based zone controller.
+- **[Main Controller Bill of Materials](docs/hardware/main-controller-bom.md):** A complete list of electronic components for the main, wall-powered controller.
 
 ## Getting Started
 

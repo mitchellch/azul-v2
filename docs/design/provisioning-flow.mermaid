@@ -1,0 +1,40 @@
+```mermaid
+sequenceDiagram
+    participant Client as Client (Phone)
+    participant Node as Extender Node
+
+    Note over Node: Power On / First Boot
+    Node->>Node: Read NVS; 'is_adopted' is false or missing
+    Node->>Node: Enter 'Unadopted' State
+
+    loop Physical 'Tap-to-Wake'
+        Node->>Node: Wake from Deep Sleep via EXT0
+        Node->>Node: Start BLE Advertising ('Azul-Extender')
+    end
+
+    Client->>Node: Scans and initiates first connection
+    Node-->>Client: Connection established
+
+    alt 'Unadopted' State
+        Client->>Client: Generate unique GUID
+        Client->>Node: Write GUID to 'Authentication' Characteristic
+        Node->>Node: Store GUID in NVS<br>Set 'is_adopted' flag to true
+        Node-->>Client: Acknowledge successful adoption
+        Node->>Node: Transition to 'Adopted' State
+    end
+
+    Note over Node,Client: -- Subsequent Connections --
+
+    loop Physical 'Tap-to-Wake'
+        Node->>Node: Wake and start BLE Advertising
+    end
+
+    Client->>Node: Connects with stored GUID
+    Node->>Node: Validate incoming GUID against NVS
+    
+    alt GUID Matches
+        Node-->>Client: Authentication Success<br>Allow operations
+    else GUID Mismatches
+        Node-->>Client: Authentication Failure<br>Ignore 'Write' commands
+    end
+```
