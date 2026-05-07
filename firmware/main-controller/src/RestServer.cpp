@@ -72,10 +72,15 @@ static void addCors(AsyncWebServerResponse* res) {
 
 void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
   JsonDocument doc;
+  float tempC = temperatureRead();
   doc["device"] = "Azul Main Controller";
   doc["firmware"] = fwVersionFull().c_str();
+  doc["build"] = FW_BUILD_DATE " " FW_BUILD_TIME;
+  doc["ssid"] = WiFi.SSID();
   doc["ip"] = WiFi.localIP().toString();
   doc["uptime_seconds"] = millis() / 1000;
+  doc["temperature_c"] = tempC;
+  doc["temperature_f"] = tempC * 9.0f / 5.0f + 32.0f;
   doc["zones_running"] = _zones.isAnyZoneRunning();
 
   String out;

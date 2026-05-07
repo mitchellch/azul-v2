@@ -11,7 +11,7 @@ bool WiFiManager::begin() {
   loadCredentials(ssid, password);
 
   if (strlen(ssid) == 0) {
-    Logger::log("[WiFi] No credentials stored. Use CLI: wifi-set <ssid> <password>");
+    Serial.println("[WiFi] No credentials stored. Use CLI: wifi-set <ssid> <password>");
     return false;
   }
 
@@ -19,20 +19,20 @@ bool WiFiManager::begin() {
 }
 
 bool WiFiManager::connect(const char* ssid, const char* password) {
-  Logger::log("[WiFi] Connecting to %s...", ssid);
+  Serial.printf("[WiFi] Connecting to %s...\n", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-      Logger::log("[WiFi] Connection timed out");
+      Serial.println("[WiFi] Connection timed out");
       return false;
     }
     delay(250);
   }
 
-  Logger::log("[WiFi] Connected. IP: %s", WiFi.localIP().toString().c_str());
+  Serial.printf("[WiFi] Connected. IP: %s\n", WiFi.localIP().toString().c_str());
   return true;
 }
 
@@ -42,8 +42,14 @@ bool WiFiManager::isConnected() const {
 
 void WiFiManager::reconnectIfNeeded() {
   if (!isConnected()) {
-    Logger::log("[WiFi] Reconnecting...");
-    begin();
+    _failCount++;
+    if (_failCount >= 2) {
+      _failCount = 0;
+      Logger::log("[WiFi] Reconnecting...");
+      begin();
+    }
+  } else {
+    _failCount = 0;
   }
 }
 
@@ -53,7 +59,6 @@ String WiFiManager::getIPAddress() const {
 
 void WiFiManager::loadCredentials(char* ssid, char* password) {
   Preferences prefs;
-  // false = read/write, creates the namespace if it doesn't exist yet
   prefs.begin("wifi", false);
   prefs.getString("ssid", ssid, 64);
   prefs.getString("password", password, 64);

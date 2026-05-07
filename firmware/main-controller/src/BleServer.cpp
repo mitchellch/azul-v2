@@ -77,7 +77,7 @@ void BleServer::begin() {
   adv->addServiceUUID(AZUL_BLE_SERVICE_UUID);
   adv->start();
 
-  Logger::log("[BLE] Server started, advertising as 'Azul-Controller'");
+  Serial.println("[BLE] Server started, advertising as 'Azul-Controller'");
 }
 
 bool BleServer::isConnected() const {
@@ -97,8 +97,12 @@ void BleServer::notifyStatus() {
 
 String BleServer::buildStatusJson() const {
   JsonDocument doc;
+  float tempC = temperatureRead();
   doc["firmware"] = fwVersionFull().c_str();
+  doc["build"] = FW_BUILD_DATE " " FW_BUILD_TIME;
   doc["uptime"] = millis() / 1000;
+  doc["temperature_c"] = tempC;
+  doc["temperature_f"] = tempC * 9.0f / 5.0f + 32.0f;
   doc["zones_running"] = _zones.isAnyZoneRunning();
   String out;
   serializeJson(doc, out);

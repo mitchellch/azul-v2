@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "Logger.h"
 #include "ZoneController.h"
 #include "WiFiManager.h"
 #include "RestServer.h"
@@ -19,45 +20,39 @@ unsigned long lastWifiCheck = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(500); // Allow USB CDC to enumerate
+  delay(500);
+
+  Logger::init();
 
   Serial.println("\n[Azul] Main Controller booting...");
 
-  // WiFi — non-fatal if no credentials stored yet
   wifiManager.begin();
 
-  // REST server only starts if WiFi is connected
   if (wifiManager.isConnected()) {
     restServer.begin();
   } else {
     Serial.println("[REST] Skipping — WiFi not connected. Use CLI to set credentials.");
   }
 
-  // BLE always starts
   bleServer.begin();
 
-  // CLI always starts
+  // CLI must start before Logger::log is called so the reprint callback is set
   serialCli.begin();
 
-  Serial.println("[Azul] Boot complete");
+  Logger::log("[Azul] Boot complete");
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // Zone timer ticks
   zones.tick();
-
-  // CLI input
   serialCli.poll();
 
-  // BLE status notifications
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {
     bleServer.notifyStatus();
     lastBleNotify = now;
   }
 
-  // Periodic WiFi reconnect check
   if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS) {
     wifiManager.reconnectIfNeeded();
     lastWifiCheck = now;

@@ -5,9 +5,44 @@ def test_status_returns_expected_fields(api):
     data = api.get("/status")
     assert "device" in data
     assert "firmware" in data
+    assert "build" in data
+    assert "ssid" in data
     assert "ip" in data
     assert "uptime_seconds" in data
+    assert "temperature_c" in data
+    assert "temperature_f" in data
     assert "zones_running" in data
+
+
+def test_status_build_timestamp_format(api):
+    build = api.get("/status")["build"]
+    assert isinstance(build, str)
+    assert len(build) > 0
+    # Format: "May  7 2026 14:23:01"
+    parts = build.split(" ")
+    assert len(parts) >= 3
+
+
+def test_status_temperature_is_plausible(api):
+    data = api.get("/status")
+    temp_c = data["temperature_c"]
+    temp_f = data["temperature_f"]
+    assert isinstance(temp_c, (int, float))
+    assert isinstance(temp_f, (int, float))
+    assert 0 < temp_c < 100
+    assert 32 < temp_f < 212
+
+
+def test_status_temperature_conversion(api):
+    data = api.get("/status")
+    expected_f = data["temperature_c"] * 9 / 5 + 32
+    assert abs(data["temperature_f"] - expected_f) < 0.1
+
+
+def test_status_ssid_present(api):
+    data = api.get("/status")
+    assert isinstance(data["ssid"], str)
+    assert len(data["ssid"]) > 0
 
 
 def test_status_device_name(api):

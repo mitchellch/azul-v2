@@ -39,11 +39,11 @@ void CLI::poll() {
 
     if (c == '\n') {
       _buf[_bufLen] = '\0';
+      Serial.println();
       if (_bufLen > 0) {
-        Serial.println();
         dispatch(_buf);
-        Serial.print("> ");
       }
+      Serial.print("> ");
       _bufLen = 0;
       memset(_buf, 0, sizeof(_buf));
       return;
@@ -106,16 +106,23 @@ void CLI::printHelp() {
 }
 
 void CLI::cmdStatus() {
+  float tempC = temperatureRead();
   Serial.printf("Firmware:      %s\r\n", fwVersionFull().c_str());
   Serial.printf("Uptime:        %lu seconds\r\n", millis() / 1000);
-  Serial.printf("WiFi:          %s\r\n", WiFi.isConnected() ? WiFi.localIP().toString().c_str() : "disconnected");
+  Serial.printf("Temperature:   %.1f C / %.1f F\r\n", tempC, tempC * 9.0f / 5.0f + 32.0f);
+  if (WiFi.isConnected()) {
+    Serial.printf("WiFi:          %s (%s)\r\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+  } else {
+    Serial.printf("WiFi:          disconnected\r\n");
+  }
   Serial.printf("Zones running: %s\r\n", _zones.isAnyZoneRunning() ? "yes" : "no");
 }
 
 void CLI::cmdVersion() {
-  Serial.printf("Firmware: %s\r\n", fwVersionFull().c_str());
-  Serial.printf("Version:  %d.%d.%d\r\n", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH);
-  Serial.printf("Git SHA:  %s%s\r\n", FW_GIT_SHA, FW_GIT_DIRTY ? " (dirty)" : "");
+  Serial.printf("Firmware:  %s\r\n", fwVersionFull().c_str());
+  Serial.printf("Version:   %d.%d.%d\r\n", FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH);
+  Serial.printf("Git SHA:   %s%s\r\n", FW_GIT_SHA, FW_GIT_DIRTY ? " (dirty)" : "");
+  Serial.printf("Built:     %s %s\r\n", FW_BUILD_DATE, FW_BUILD_TIME);
 }
 
 void CLI::cmdZones() {

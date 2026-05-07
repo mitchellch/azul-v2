@@ -24,6 +24,10 @@
     _FW_STR(FW_VERSION_MINOR) "." \
     _FW_STR(FW_VERSION_PATCH)
 
+// Build timestamp from compiler — "May  7 2026 14:23:01"
+#define FW_BUILD_DATE __DATE__
+#define FW_BUILD_TIME __TIME__
+
 // Returns "0.1.0-abc1234" or "0.1.0-abc1234-dirty"
 inline String fwVersionFull() {
     String v = FW_VERSION_BASE "-" FW_GIT_SHA;
