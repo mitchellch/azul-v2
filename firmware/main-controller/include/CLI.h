@@ -10,6 +10,9 @@ public:
   // Call from main loop — reads available serial bytes and dispatches commands
   void poll();
 
+  // Reprint "> " plus current input buffer — called by Logger after background messages
+  void printPrompt();
+
 private:
   ZoneController& _zones;
   char _buf[128];

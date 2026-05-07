@@ -1,4 +1,5 @@
 #include "WiFiManager.h"
+#include "Logger.h"
 #include <WiFi.h>
 #include <Preferences.h>
 
@@ -10,7 +11,7 @@ bool WiFiManager::begin() {
   loadCredentials(ssid, password);
 
   if (strlen(ssid) == 0) {
-    Serial.println("[WiFi] No credentials stored. Use CLI: wifi-set <ssid> <password>");
+    Logger::log("[WiFi] No credentials stored. Use CLI: wifi-set <ssid> <password>");
     return false;
   }
 
@@ -18,20 +19,20 @@ bool WiFiManager::begin() {
 }
 
 bool WiFiManager::connect(const char* ssid, const char* password) {
-  Serial.printf("[WiFi] Connecting to %s...\n", ssid);
+  Logger::log("[WiFi] Connecting to %s...", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-      Serial.println("[WiFi] Connection timed out");
+      Logger::log("[WiFi] Connection timed out");
       return false;
     }
     delay(250);
   }
 
-  Serial.printf("[WiFi] Connected. IP: %s\n", WiFi.localIP().toString().c_str());
+  Logger::log("[WiFi] Connected. IP: %s", WiFi.localIP().toString().c_str());
   return true;
 }
 
@@ -41,7 +42,7 @@ bool WiFiManager::isConnected() const {
 
 void WiFiManager::reconnectIfNeeded() {
   if (!isConnected()) {
-    Serial.println("[WiFi] Reconnecting...");
+    Logger::log("[WiFi] Reconnecting...");
     begin();
   }
 }

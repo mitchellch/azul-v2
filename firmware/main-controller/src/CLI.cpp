@@ -1,19 +1,34 @@
 #include "CLI.h"
 #include "version.h"
+#include "Logger.h"
 #include <WiFi.h>
 #include <Preferences.h>
 
+// Static pointer to the active CLI instance for the Logger reprint callback
+static CLI* s_instance = nullptr;
+static void reprintPrompt() {
+  if (s_instance) s_instance->printPrompt();
+}
+
 CLI::CLI(ZoneController& zones) : _zones(zones), _bufLen(0) {
   memset(_buf, 0, sizeof(_buf));
+  s_instance = this;
 }
 
 void CLI::begin() {
+  Logger::setReprintCallback(reprintPrompt);
   Serial.println("\r\n=============================");
   Serial.println("  Azul Main Controller CLI");
   Serial.printf( "  Firmware: %s\r\n", fwVersionFull().c_str());
   Serial.println("  Type 'help' for commands");
   Serial.println("=============================\r\n");
   Serial.print("> ");
+}
+
+void CLI::printPrompt() {
+  Serial.print("> ");
+  // Reprint whatever the user had typed so far
+  if (_bufLen > 0) Serial.print(_buf);
 }
 
 void CLI::poll() {

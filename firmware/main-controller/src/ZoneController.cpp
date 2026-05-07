@@ -1,4 +1,7 @@
 #include "ZoneController.h"
+#ifndef UNIT_TEST
+#include "Logger.h"
+#endif
 
 ZoneController::ZoneController() : _lastTickMs(0) {
   for (uint8_t i = 0; i < MAX_ZONES; i++) {
@@ -14,7 +17,6 @@ bool ZoneController::startZone(uint8_t zoneId, uint32_t durationSeconds) {
   Zone& z = _zones[zoneId - 1];
   z.status = ZoneStatus::RUNNING;
   z.runtimeSeconds = durationSeconds;
-  Serial.printf("[ZoneController] Zone %d started for %lu seconds\n", zoneId, durationSeconds);
   return true;
 }
 
@@ -23,7 +25,6 @@ bool ZoneController::stopZone(uint8_t zoneId) {
   Zone& z = _zones[zoneId - 1];
   z.status = ZoneStatus::IDLE;
   z.runtimeSeconds = 0;
-  Serial.printf("[ZoneController] Zone %d stopped\n", zoneId);
   return true;
 }
 
@@ -32,7 +33,6 @@ bool ZoneController::stopAll() {
     _zones[i].status = ZoneStatus::IDLE;
     _zones[i].runtimeSeconds = 0;
   }
-  Serial.println("[ZoneController] All zones stopped");
   return true;
 }
 
@@ -59,7 +59,9 @@ void ZoneController::tick() {
       if (_zones[i].runtimeSeconds <= elapsed) {
         _zones[i].runtimeSeconds = 0;
         _zones[i].status = ZoneStatus::IDLE;
-        Serial.printf("[ZoneController] Zone %d timer expired\n", _zones[i].id);
+#ifndef UNIT_TEST
+        Logger::log("[Zone %d] Timer expired", _zones[i].id);
+#endif
       } else {
         _zones[i].runtimeSeconds -= elapsed;
       }

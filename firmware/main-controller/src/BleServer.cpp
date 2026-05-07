@@ -1,5 +1,6 @@
 #include "BleServer.h"
 #include "version.h"
+#include "Logger.h"
 #include <ArduinoJson.h>
 
 // Command characteristic write handler
@@ -16,7 +17,7 @@ public:
     //                {"cmd":"stop-all"}
     JsonDocument doc;
     if (deserializeJson(doc, val.c_str()) != DeserializationError::Ok) {
-      Serial.println("[BLE] Invalid JSON command");
+      Logger::log("[BLE] Invalid JSON command");
       return;
     }
 
@@ -31,7 +32,7 @@ public:
     } else if (strcmp(cmd, "stop-all") == 0) {
       _zones.stopAll();
     } else {
-      Serial.printf("[BLE] Unknown command: %s\n", cmd);
+      Logger::log("[BLE] Unknown command: %s\n", cmd);
     }
   }
 
@@ -76,7 +77,7 @@ void BleServer::begin() {
   adv->addServiceUUID(AZUL_BLE_SERVICE_UUID);
   adv->start();
 
-  Serial.println("[BLE] Server started, advertising as 'Azul-Controller'");
+  Logger::log("[BLE] Server started, advertising as 'Azul-Controller'");
 }
 
 bool BleServer::isConnected() const {
