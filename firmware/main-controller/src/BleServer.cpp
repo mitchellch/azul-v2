@@ -32,7 +32,7 @@ public:
     } else if (strcmp(cmd, "stop-all") == 0) {
       _zones.stopAll();
     } else {
-      Logger::log("[BLE] Unknown command: %s\n", cmd);
+      Logger::log("[BLE] Unknown command: %s", cmd);
     }
   }
 
@@ -55,7 +55,9 @@ void BleServer::begin() {
     AZUL_BLE_CHAR_STATUS_UUID,
     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
-  _statusChar->setValue(buildStatusJson().c_str());
+  String statusJson = buildStatusJson();
+  _statusChar->setValue((uint8_t*)statusJson.c_str(), statusJson.length());
+  _statusChar->createDescriptor("2901")->setValue("Status");
 
   // Zone command characteristic — write only
   NimBLECharacteristic* cmdChar = service->createCharacteristic(
@@ -63,13 +65,16 @@ void BleServer::begin() {
     NIMBLE_PROPERTY::WRITE
   );
   cmdChar->setCallbacks(new ZoneCmdCallback(_zones));
+  cmdChar->createDescriptor("2901")->setValue("Zone Command");
 
   // Zone data characteristic — read only
   _zoneDataChar = service->createCharacteristic(
     AZUL_BLE_CHAR_ZONE_DATA_UUID,
     NIMBLE_PROPERTY::READ
   );
-  _zoneDataChar->setValue(buildZoneDataJson().c_str());
+  String zoneJson = buildZoneDataJson();
+  _zoneDataChar->setValue((uint8_t*)zoneJson.c_str(), zoneJson.length());
+  _zoneDataChar->createDescriptor("2901")->setValue("Zone Data");
 
   service->start();
 
@@ -87,11 +92,12 @@ bool BleServer::isConnected() const {
 void BleServer::notifyStatus() {
   if (!_statusChar) return;
   String json = buildStatusJson();
-  _statusChar->setValue(json.c_str());
+  _statusChar->setValue((uint8_t*)json.c_str(), json.length());
   _statusChar->notify();
 
   if (_zoneDataChar) {
-    _zoneDataChar->setValue(buildZoneDataJson().c_str());
+    String zoneJson = buildZoneDataJson();
+    _zoneDataChar->setValue((uint8_t*)zoneJson.c_str(), zoneJson.length());
   }
 }
 

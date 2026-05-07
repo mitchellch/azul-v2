@@ -4,14 +4,28 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
-// Static pointer to the active CLI instance for the Logger reprint callback
+static uint8_t commonPrefixLen(const char** matches, uint8_t count) {
+  if (count == 0) return 0;
+  uint8_t len = strlen(matches[0]);
+  for (uint8_t i = 1; i < count; i++) {
+    uint8_t j = 0;
+    while (j < len && matches[0][j] == matches[i][j]) j++;
+    len = j;
+  }
+  return len;
+}
+
 static CLI* s_instance = nullptr;
 static void reprintPrompt() {
   if (s_instance) s_instance->printPrompt();
 }
 
-CLI::CLI(ZoneController& zones) : _zones(zones), _bufLen(0) {
+CLI::CLI(ZoneController& zones)
+  : _zones(zones), _bufLen(0),
+    _historyCount(0), _historyHead(0), _historyPos(-1),
+    _escState(0) {
   memset(_buf, 0, sizeof(_buf));
+  memset(_history, 0, sizeof(_history));
   s_instance = this;
 }
 
@@ -27,22 +41,139 @@ void CLI::begin() {
 
 void CLI::printPrompt() {
   Serial.print("> ");
-  // Reprint whatever the user had typed so far
   if (_bufLen > 0) Serial.print(_buf);
+}
+
+void CLI::clearInputLine() {
+  // Move to start of line, overwrite with spaces, move back
+  for (uint8_t i = 0; i < _bufLen + 2; i++) Serial.print("\b");
+  for (uint8_t i = 0; i < _bufLen + 2; i++) Serial.print(" ");
+  for (uint8_t i = 0; i < _bufLen + 2; i++) Serial.print("\b");
+  Serial.print("> ");
+}
+
+void CLI::historyPush(const char* line) {
+  // Don't store blank lines or duplicates of the most recent entry
+  if (strlen(line) == 0) return;
+  if (_historyCount > 0 && strcmp(_history[_historyHead], line) == 0) return;
+
+  _historyHead = (_historyHead + 1) % HISTORY_SIZE;
+  strlcpy(_history[_historyHead], line, sizeof(_history[0]));
+  if (_historyCount < HISTORY_SIZE) _historyCount++;
+}
+
+void CLI::historyLoad(int8_t pos) {
+  // pos 0 = most recent, 1 = one before, etc.
+  uint8_t idx = (_historyHead - pos + HISTORY_SIZE) % HISTORY_SIZE;
+  clearInputLine();
+  strlcpy(_buf, _history[idx], sizeof(_buf));
+  _bufLen = strlen(_buf);
+  Serial.print(_buf);
 }
 
 void CLI::poll() {
   while (Serial.available()) {
     char c = Serial.read();
 
+    // Escape sequence state machine for arrow keys
+    if (_escState == 1) {
+      if (c == '[') { _escState = 2; continue; }
+      _escState = 0;
+    }
+    if (_escState == 2) {
+      _escState = 0;
+      if (c == 'A' && _historyCount > 0) {
+        // Up arrow — go back in history
+        int8_t next = _historyPos + 1;
+        if (next < (int8_t)_historyCount) {
+          _historyPos = next;
+          historyLoad(_historyPos);
+        }
+      } else if (c == 'B') {
+        // Down arrow — go forward in history
+        if (_historyPos > 0) {
+          _historyPos--;
+          historyLoad(_historyPos);
+        } else if (_historyPos == 0) {
+          // Back to empty prompt
+          _historyPos = -1;
+          clearInputLine();
+          _bufLen = 0;
+          memset(_buf, 0, sizeof(_buf));
+        }
+      }
+      continue;
+    }
+    if (c == 0x1B) { // ESC
+      _escState = 1;
+      continue;
+    }
+
     if (c == '\r') continue;
+
+    // Ctrl-U — kill line
+    if (c == 0x15) {
+      if (_bufLen > 0) {
+        clearInputLine();
+        _bufLen = 0;
+        memset(_buf, 0, sizeof(_buf));
+        _historyPos = -1;
+      }
+      continue;
+    }
+
+    if (c == '\t') { cmdComplete(); continue; }
 
     if (c == '\n') {
       _buf[_bufLen] = '\0';
-      Serial.println();
+
       if (_bufLen > 0) {
+        const char* matches[10];
+        uint8_t matchCount = findMatches(matches, 10);
+        uint8_t prefixLen = commonPrefixLen(matches, matchCount);
+
+        // Check for an exact match first — "stop" should execute even though
+        // "stop-all" also starts with "stop"
+        bool exactMatch = false;
+        for (uint8_t i = 0; i < matchCount; i++) {
+          if (strcmp(matches[i], _buf) == 0) { exactMatch = true; break; }
+        }
+
+        if (exactMatch || matchCount == 1) {
+          // Exact or unique match — complete (if needed) and execute
+          if (matchCount == 1) {
+            strlcpy(_buf, matches[0], sizeof(_buf));
+            _bufLen = strlen(_buf);
+          }
+          Serial.println();
+          historyPush(_buf);
+          dispatch(_buf);
+          _historyPos = -1;
+          Serial.print("> ");
+          _bufLen = 0;
+          memset(_buf, 0, sizeof(_buf));
+          return;
+        } else if (matchCount > 1) {
+          // Ambiguous — extend if possible, then show options and stay at prompt
+          if (prefixLen > _bufLen) {
+            strlcpy(_buf, matches[0], prefixLen + 1);
+            _bufLen = prefixLen;
+          }
+          Serial.println();
+          for (uint8_t i = 0; i < matchCount; i++)
+            Serial.printf("  %s\r\n", matches[i]);
+          printPrompt();
+          return;
+        }
+        // No match — execute as typed (will produce "Unknown command")
+        Serial.println();
+        historyPush(_buf);
         dispatch(_buf);
+      } else {
+        Serial.println();
       }
+
+      _historyPos = -1;
       Serial.print("> ");
       _bufLen = 0;
       memset(_buf, 0, sizeof(_buf));
@@ -53,15 +184,60 @@ void CLI::poll() {
     if (c == 0x7F || c == '\b') {
       if (_bufLen > 0) {
         _bufLen--;
+        _buf[_bufLen] = '\0';
         Serial.print("\b \b");
+        _historyPos = -1;
       }
-      return;
+      continue;
     }
+
+    // Any printable character resets history browsing
+    _historyPos = -1;
 
     if (_bufLen < sizeof(_buf) - 1) {
       _buf[_bufLen++] = c;
-      Serial.print(c); // echo
+      Serial.print(c);
     }
+  }
+}
+
+// Returns the number of commands that match _buf as a prefix, populates matches[].
+uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
+  static const char* cmds[] = {
+    "help", "status", "zones", "start", "stop", "stop-all",
+    "wifi-set", "wifi-status", "version", "reboot"
+  };
+  static const uint8_t cmdCount = sizeof(cmds) / sizeof(cmds[0]);
+
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < cmdCount && count < maxMatches; i++) {
+    if (strncmp(cmds[i], _buf, _bufLen) == 0)
+      matches[count++] = cmds[i];
+  }
+  return count;
+}
+
+void CLI::cmdComplete() {
+  const char* matches[10];
+  uint8_t matchCount = findMatches(matches, 10);
+
+  if (matchCount == 0) return;
+
+  // Extend to longest common prefix
+  uint8_t prefixLen = commonPrefixLen(matches, matchCount);
+  if (prefixLen > _bufLen) {
+    clearInputLine();
+    strlcpy(_buf, matches[0], prefixLen + 1);
+    _bufLen = prefixLen;
+    Serial.print(_buf);
+  }
+
+  // If still ambiguous, show options
+  if (matchCount > 1) {
+    Serial.println();
+    for (uint8_t i = 0; i < matchCount; i++)
+      Serial.printf("  %s\r\n", matches[i]);
+    printPrompt();
   }
 }
 
@@ -69,7 +245,6 @@ void CLI::dispatch(const char* line) {
   char cmd[32] = {0};
   char args[96] = {0};
 
-  // Split into command and args
   const char* space = strchr(line, ' ');
   if (space) {
     size_t cmdLen = space - line;
@@ -103,6 +278,9 @@ void CLI::printHelp() {
   Serial.println("  wifi-status               Show WiFi connection status");
   Serial.println("  version                   Show firmware version");
   Serial.println("  reboot                    Reboot the device");
+  Serial.println("  Up/Down arrows            Browse command history");
+  Serial.println("  TAB                       Complete or list matching commands");
+  Serial.println("  Ctrl-U                    Clear current line");
 }
 
 void CLI::cmdStatus() {
@@ -171,7 +349,6 @@ void CLI::cmdWifiSet(const char* args) {
   char ssid[64] = {0};
   char password[64] = {0};
 
-  // Parse: wifi-set <ssid> <password>
   const char* space = strchr(args, ' ');
   if (!space) {
     Serial.println("Usage: wifi-set <ssid> <password>");
