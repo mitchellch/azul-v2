@@ -150,6 +150,10 @@ void RestServer::handleStopAll(AsyncWebServerRequest* req) {
 
 void RestServer::handleUpdateZone(AsyncWebServerRequest* req, JsonVariant& body) {
   uint8_t id = atoi(req->pathArg(0).c_str());
+  if (!_zones.getZone(id)) {
+    req->send(404, "application/json", "{\"error\":\"Zone not found\"}");
+    return;
+  }
   if (!body["name"].is<const char*>()) {
     req->send(400, "application/json", "{\"error\":\"name required\"}");
     return;
