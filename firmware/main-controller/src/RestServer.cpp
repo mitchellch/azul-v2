@@ -30,21 +30,21 @@ void RestServer::registerRoutes() {
     handleGetStatus(req);
   });
 
-  _server.on("/api/zones", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    handleGetZones(req);
-  });
-
+  // Specific routes before generic ones to ensure correct matching
   _server.on("/api/zones/stop-all", HTTP_POST, [this](AsyncWebServerRequest* req) {
     handleStopAll(req);
   });
 
-  // Routes with :id
+  _server.on("^/api/zones/([0-9]+)/stop$", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    handleStopZone(req);
+  });
+
   _server.on("^/api/zones/([0-9]+)$", HTTP_GET, [this](AsyncWebServerRequest* req) {
     handleGetZone(req);
   });
 
-  _server.on("^/api/zones/([0-9]+)/stop$", HTTP_POST, [this](AsyncWebServerRequest* req) {
-    handleStopZone(req);
+  _server.on("/api/zones", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    handleGetZones(req);
   });
 
   // Body-receiving routes

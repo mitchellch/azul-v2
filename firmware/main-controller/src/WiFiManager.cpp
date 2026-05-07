@@ -52,7 +52,8 @@ String WiFiManager::getIPAddress() const {
 
 void WiFiManager::loadCredentials(char* ssid, char* password) {
   Preferences prefs;
-  prefs.begin("wifi", true);
+  // false = read/write, creates the namespace if it doesn't exist yet
+  prefs.begin("wifi", false);
   prefs.getString("ssid", ssid, 64);
   prefs.getString("password", password, 64);
   prefs.end();
