@@ -6,15 +6,13 @@
 // Command characteristic write handler
 class ZoneCmdCallback : public NimBLECharacteristicCallbacks {
 public:
-  ZoneCmdCallback(ZoneController& zones) : _zones(zones) {}
+  ZoneCmdCallback(ZoneController& zones, AuditLog& audit)
+    : _zones(zones), _audit(audit) {}
 
   void onWrite(NimBLECharacteristic* chr) override {
     std::string val = chr->getValue();
     if (val.empty()) return;
 
-    // Expected JSON: {"cmd":"start","zone":1,"duration":60}
-    //                {"cmd":"stop","zone":1}
-    //                {"cmd":"stop-all"}
     JsonDocument doc;
     if (deserializeJson(doc, val.c_str()) != DeserializationError::Ok) {
       Logger::log("[BLE] Invalid JSON command");
@@ -24,8 +22,10 @@ public:
     const char* cmd = doc["cmd"] | "";
     if (strcmp(cmd, "start") == 0) {
       uint8_t zone = doc["zone"] | 0;
-      uint32_t duration = doc["duration"] | 60;
-      _zones.startZone(zone, duration);
+      uint16_t duration = doc["duration"] | 60;
+      if (_zones.startZone(zone, duration)) {
+        _audit.append(zone, duration, AuditSource::MANUAL_BLE);
+      }
     } else if (strcmp(cmd, "stop") == 0) {
       uint8_t zone = doc["zone"] | 0;
       _zones.stopZone(zone);
@@ -38,10 +38,11 @@ public:
 
 private:
   ZoneController& _zones;
+  AuditLog&       _audit;
 };
 
-BleServer::BleServer(ZoneController& zones)
-  : _zones(zones), _statusChar(nullptr), _zoneDataChar(nullptr) {}
+BleServer::BleServer(ZoneController& zones, AuditLog& audit)
+  : _zones(zones), _audit(audit), _statusChar(nullptr), _zoneDataChar(nullptr) {}
 
 void BleServer::begin() {
   NimBLEDevice::init("Azul-Controller");
@@ -64,7 +65,7 @@ void BleServer::begin() {
     AZUL_BLE_CHAR_ZONE_CMD_UUID,
     NIMBLE_PROPERTY::WRITE
   );
-  cmdChar->setCallbacks(new ZoneCmdCallback(_zones));
+  cmdChar->setCallbacks(new ZoneCmdCallback(_zones, _audit));
   cmdChar->createDescriptor("2901")->setValue("Zone Command");
 
   // Zone data characteristic — read only

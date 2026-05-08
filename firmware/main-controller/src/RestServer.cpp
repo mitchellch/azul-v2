@@ -2,6 +2,7 @@
 #include "version.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <nvs.h>
 
 RestServer::RestServer(ZoneController& zones, Scheduler& scheduler,
                        AuditLog& audit, ChangeLog& changelog, TimeManager& time)
@@ -25,7 +26,7 @@ static void sendJson(AsyncWebServerRequest* req, int code, const String& body) {
 }
 
 void RestServer::registerRoutes() {
-  _server.onNotFound([](AsyncWebServerRequest* req) {
+  _server.onNotFound([this](AsyncWebServerRequest* req) {
     if (req->method() == HTTP_OPTIONS) {
       AsyncWebServerResponse* res = req->beginResponse(204);
       res->addHeader("Access-Control-Allow-Origin", "*");
@@ -34,6 +35,31 @@ void RestServer::registerRoutes() {
       req->send(res);
     } else {
       req->send(404, "application/json", "{\"error\":\"Not found\"}");
+    }
+  });
+
+  // PUT /api/schedules/:id body handler — must use onBody at server level
+  // because regex routes don't support per-route body callbacks
+  _server.onRequestBody([this](AsyncWebServerRequest* req, uint8_t* data,
+                                size_t len, size_t index, size_t total) {
+    if (req->method() != HTTP_PUT) return;
+    if (!req->url().startsWith("/api/schedules/")) return;
+    if (req->url() == "/api/schedules/active") return;
+
+    if (index == 0) req->_tempObject = new String();
+    static_cast<String*>(req->_tempObject)->concat((char*)data, len);
+
+    if (index + len == total) {
+      JsonDocument doc;
+      String* body = static_cast<String*>(req->_tempObject);
+      if (deserializeJson(doc, *body) == DeserializationError::Ok) {
+        JsonVariant v = doc.as<JsonVariant>();
+        handleUpdateSchedule(req, v);
+      } else {
+        sendJson(req, 400, "{\"error\":\"Invalid JSON\"}");
+      }
+      delete body;
+      req->_tempObject = nullptr;
     }
   });
 
@@ -65,8 +91,13 @@ void RestServer::registerRoutes() {
 
   // ---- Schedules ----
   // Specific literal routes before regex
-  _server.on("/api/schedules/active", HTTP_GET,
+  _server.on("/api/schedules/active",     HTTP_GET,
     [this](AsyncWebServerRequest* r) { handleGetActiveSchedule(r); });
+  _server.on("/api/schedules/deactivate", HTTP_POST,
+    [this](AsyncWebServerRequest* r) {
+      _scheduler.deactivate();
+      sendJson(r, 200, "{\"ok\":true}");
+    });
   _server.on("^/api/schedules/([^/]+)/activate$", HTTP_POST,
     [this](AsyncWebServerRequest* r) { handleActivateSchedule(r); });
   _server.on("^/api/schedules/([^/]+)$", HTTP_GET,
@@ -77,18 +108,28 @@ void RestServer::registerRoutes() {
     [this](AsyncWebServerRequest* r) { handleGetSchedules(r); });
 
   auto* createSchedHandler = new AsyncCallbackJsonWebHandler("/api/schedules",
-    [this](AsyncWebServerRequest* r, JsonVariant& b) { handleCreateSchedule(r, b); });
+    [this](AsyncWebServerRequest* r, JsonVariant& b) {
+      if (r->method() == HTTP_POST && r->url() == "/api/schedules") {
+        handleCreateSchedule(r, b);
+      } else if (r->method() == HTTP_PUT && r->url().startsWith("/api/schedules/")
+                 && r->url() != "/api/schedules/active") {
+        handleUpdateSchedule(r, b);
+      } else {
+        sendJson(r, 404, "{\"error\":\"Not found\"}");
+      }
+    });
   _server.addHandler(createSchedHandler);
 
-  auto* updateSchedHandler = new AsyncCallbackJsonWebHandler(
-    "^/api/schedules/([^/]+)$",
-    [this](AsyncWebServerRequest* r, JsonVariant& b) { handleUpdateSchedule(r, b); });
-  updateSchedHandler->setMethod(HTTP_PUT);
-  _server.addHandler(updateSchedHandler);
+  // PUT /api/schedules/:id handled via onRequestBody + onNotFound below
 
   // ---- Logs ----
-  _server.on("/api/log",         HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetLog(r); });
-  _server.on("/api/log/changes", HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetChangeLog(r); });
+  _server.on("/api/log", HTTP_GET, [this](AsyncWebServerRequest* r) {
+    if (r->url() == "/api/log/changes") {
+      handleGetChangeLog(r);
+    } else {
+      handleGetLog(r);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -172,11 +213,21 @@ void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
   doc["build"]          = FW_BUILD_DATE " " FW_BUILD_TIME;
   doc["ssid"]           = WiFi.SSID();
   doc["ip"]             = WiFi.localIP().toString();
+  doc["mac"]            = WiFi.macAddress();
   doc["uptime_seconds"] = millis() / 1000;
   doc["temperature_c"]  = tempC;
   doc["temperature_f"]  = tempC * 9.0f / 5.0f + 32.0f;
   doc["zones_running"]  = _zones.isAnyZoneRunning();
   doc["ntp_synced"]     = _scheduler.isTimeSynced();
+  doc["ram_free"]       = ESP.getFreeHeap();
+  doc["ram_total"]      = ESP.getHeapSize();
+
+  nvs_stats_t nvsStats;
+  if (nvs_get_stats(NULL, &nvsStats) == ESP_OK) {
+    doc["nvs_used"]  = nvsStats.used_entries;
+    doc["nvs_free"]  = nvsStats.free_entries;
+    doc["nvs_total"] = nvsStats.total_entries;
+  }
 
   const Schedule* active = _scheduler.getActiveSchedule();
   if (active) {
@@ -257,6 +308,7 @@ void RestServer::handleStartZone(AsyncWebServerRequest* req, JsonVariant& body) 
   uint8_t id = atoi(req->pathArg(0).c_str());
   uint32_t duration = body["duration"] | 60;
   if (_zones.startZone(id, duration)) {
+    _audit.append(id, (uint16_t)duration, AuditSource::MANUAL_REST);
     sendJson(req, 200, "{\"ok\":true}");
   } else {
     sendJson(req, 404, "{\"error\":\"Zone not found\"}");
@@ -354,7 +406,8 @@ void RestServer::handleCreateSchedule(AsyncWebServerRequest* req, JsonVariant& b
 }
 
 void RestServer::handleUpdateSchedule(AsyncWebServerRequest* req, JsonVariant& body) {
-  String uuid = req->pathArg(0);
+  // AsyncCallbackJsonWebHandler doesn't populate pathArg — extract UUID from URL
+  String uuid = req->url().substring(15); // strip "/api/schedules/" (15 chars)
   Schedule s;
   char errMsg[64] = {0};
   if (!jsonToSchedule(body, s, errMsg)) {
@@ -367,7 +420,7 @@ void RestServer::handleUpdateSchedule(AsyncWebServerRequest* req, JsonVariant& b
   auto result = _scheduler.updateSchedule(s);
   if (!result.ok) {
     String e = "{\"error\":\""; e += result.message; e += "\"}";
-    sendJson(req, result.message[0] == 'S' ? 404 : 409, e);
+    sendJson(req, result.httpCode ? result.httpCode : 409, e);
     return;
   }
   sendJson(req, 200, "{\"ok\":true}");
@@ -378,7 +431,7 @@ void RestServer::handleDeleteSchedule(AsyncWebServerRequest* req) {
   auto result = _scheduler.deleteSchedule(uuid.c_str());
   if (!result.ok) {
     String e = "{\"error\":\""; e += result.message; e += "\"}";
-    sendJson(req, 409, e);
+    sendJson(req, result.httpCode ? result.httpCode : 409, e);
     return;
   }
   sendJson(req, 200, "{\"ok\":true}");

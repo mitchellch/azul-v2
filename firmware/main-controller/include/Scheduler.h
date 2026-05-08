@@ -8,9 +8,10 @@
 
 struct ValidationResult {
     bool ok;
+    int  httpCode; // suggested HTTP status code when !ok (0 = default)
     char message[64];
-    ValidationResult() : ok(false) { message[0] = '\0'; }
-    ValidationResult(bool o, const char* m) : ok(o) {
+    ValidationResult() : ok(false), httpCode(0) { message[0] = '\0'; }
+    ValidationResult(bool o, const char* m, int code = 0) : ok(o), httpCode(code) {
         strlcpy(message, m, sizeof(message));
     }
 };
@@ -28,6 +29,7 @@ public:
     ValidationResult updateSchedule(const Schedule& s);
     ValidationResult deleteSchedule(const char* uuid);
     ValidationResult activateSchedule(const char* uuid);
+    void deactivate(); // clear active schedule (no watering)
 
     const Schedule* getActiveSchedule() const;
     bool isKeepaliveActive() const;

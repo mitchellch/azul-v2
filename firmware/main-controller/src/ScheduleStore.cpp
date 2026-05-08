@@ -18,7 +18,7 @@ void ScheduleStore::begin() {
 
 void ScheduleStore::loadAll() {
     Preferences prefs;
-    prefs.begin(NVS_NS, true);
+    prefs.begin(NVS_NS, false);
     _head    = prefs.getUChar(KEY_HEAD, 0);
     _version = prefs.getUChar(KEY_VER,  0);
 
@@ -72,7 +72,6 @@ bool ScheduleStore::save(const Schedule& s) {
     _version++;
     persistSlot(slot);
     persistMeta();
-    Logger::log("[Store] Saved schedule '%s' in slot %d", s.name, slot);
     return true;
 }
 
@@ -122,7 +121,7 @@ bool ScheduleStore::setActiveUuid(const char* uuid) {
 
 bool ScheduleStore::getActiveUuid(char* out37) const {
     Preferences prefs;
-    prefs.begin(NVS_NS, true);
+    prefs.begin(NVS_NS, false);
     String s = prefs.getString(KEY_ACTIVE, "");
     prefs.end();
     strlcpy(out37, s.c_str(), 37);

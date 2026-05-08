@@ -66,7 +66,7 @@ void AuditLog::formatEntry(const AuditEntry& e, char* out, size_t outLen) {
 
 void AuditLog::loadFromNvs() {
     Preferences prefs;
-    prefs.begin(NVS_NS, true);
+    prefs.begin(NVS_NS, false);
     _head  = prefs.getUShort(KEY_HEAD,  0);
     _count = prefs.getUShort(KEY_COUNT, 0);
     if (_count > 0) {

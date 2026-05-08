@@ -1,26 +1,23 @@
 #pragma once
 #include <NimBLEDevice.h>
 #include "ZoneController.h"
+#include "AuditLog.h"
 
-// Service UUID
 #define AZUL_BLE_SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
-
-// Characteristic UUIDs
-#define AZUL_BLE_CHAR_STATUS_UUID    "12345678-1234-1234-1234-1234567890b1"  // READ/NOTIFY
-#define AZUL_BLE_CHAR_ZONE_CMD_UUID  "12345678-1234-1234-1234-1234567890b2"  // WRITE
-#define AZUL_BLE_CHAR_ZONE_DATA_UUID "12345678-1234-1234-1234-1234567890b3"  // READ
+#define AZUL_BLE_CHAR_STATUS_UUID    "12345678-1234-1234-1234-1234567890b1"
+#define AZUL_BLE_CHAR_ZONE_CMD_UUID  "12345678-1234-1234-1234-1234567890b2"
+#define AZUL_BLE_CHAR_ZONE_DATA_UUID "12345678-1234-1234-1234-1234567890b3"
 
 class BleServer {
 public:
-  BleServer(ZoneController& zones);
+  BleServer(ZoneController& zones, AuditLog& audit);
   void begin();
   bool isConnected() const;
-
-  // Call periodically to push status notifications to connected client
   void notifyStatus();
 
 private:
   ZoneController& _zones;
+  AuditLog&       _audit;
   NimBLECharacteristic* _statusChar;
   NimBLECharacteristic* _zoneDataChar;
 

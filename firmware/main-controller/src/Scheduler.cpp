@@ -42,13 +42,18 @@ void Scheduler::loadActiveSchedule() {
             Logger::log("[Scheduler] Loaded schedule: %s", _active.name);
             return;
         }
+        // UUID stored but schedule missing — data loss, fall back to keepalive
+        Logger::log("[Scheduler] Active schedule missing — using keepalive as fallback");
+        buildKeepaliveSchedule(_active);
+        _activeLoaded   = true;
+        _usingKeepalive = true;
+        return;
     }
 
-    // Fall back to keepalive
-    buildKeepaliveSchedule(_active);
-    _activeLoaded   = true;
-    _usingKeepalive = true;
-    Logger::log("[Scheduler] No active schedule — using keepalive");
+    // No active schedule set — idle, no watering
+    _activeLoaded   = false;
+    _usingKeepalive = false;
+    Logger::log("[Scheduler] No schedule configured");
 }
 
 void Scheduler::tick() {
@@ -123,8 +128,7 @@ bool Scheduler::wouldOverlap(const Schedule& candidate) const {
     _store.getAll(all, count);
 
     for (uint8_t i = 0; i < count; i++) {
-        if (strcmp(all[i].uuid, candidate.uuid) == 0) continue; // skip self
-        // Overlap if not (candidate.end < existing.start || candidate.start > existing.end)
+        if (strcmp(all[i].uuid, candidate.uuid) == 0) continue;
         if (!(candidate.endDate < all[i].startDate ||
               candidate.startDate > all[i].endDate)) {
             return true;
@@ -151,7 +155,7 @@ ValidationResult Scheduler::createSchedule(Schedule& s) {
 ValidationResult Scheduler::updateSchedule(const Schedule& s) {
     Schedule existing;
     if (!_store.getByUuid(s.uuid, existing)) {
-        return {false, "Schedule not found"};
+        return {false, "Schedule not found", 404};
     }
 
     if (wouldOverlap(s)) {
@@ -175,11 +179,12 @@ ValidationResult Scheduler::deleteSchedule(const char* uuid) {
     char activeUuid[37] = {0};
     _store.getActiveUuid(activeUuid);
     if (strcmp(activeUuid, uuid) == 0) {
-        return {false, "Cannot delete the active schedule"};
+        // Deactivate before deleting
+        deactivate();
     }
 
     if (!_store.remove(uuid)) {
-        return {false, "Schedule not found"};
+        return {false, "Schedule not found", 404};
     }
 
     _changelog.append(uuid, ChangeOp::DELETED);
@@ -189,11 +194,12 @@ ValidationResult Scheduler::deleteSchedule(const char* uuid) {
 ValidationResult Scheduler::activateSchedule(const char* uuid) {
     Schedule s;
     if (!_store.getByUuid(uuid, s)) {
-        return {false, "Schedule not found"};
+        return {false, "Schedule not found", 404};
     }
 
     _store.setActiveUuid(uuid);
     _active         = s;
+    _activeLoaded   = true;
     _usingKeepalive = false;
     _lastFiredDay   = -1; // reset dedup so new schedule fires correctly
     _lastFiredHour  = -1;
@@ -219,6 +225,12 @@ bool Scheduler::getSchedule(const char* uuid, Schedule& out) const {
 
 bool Scheduler::getAllSchedules(Schedule* out, uint8_t& count) const {
     return _store.getAll(out, count);
+}
+
+void Scheduler::deactivate() {
+    _store.setActiveUuid("");
+    _activeLoaded   = false;
+    _usingKeepalive = false;
 }
 
 bool Scheduler::isTimeSynced() const {

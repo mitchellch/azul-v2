@@ -8,10 +8,44 @@ def test_status_returns_expected_fields(api):
     assert "build" in data
     assert "ssid" in data
     assert "ip" in data
+    assert "mac" in data
     assert "uptime_seconds" in data
     assert "temperature_c" in data
     assert "temperature_f" in data
+    assert "ntp_synced" in data
+    assert "ram_free" in data
+    assert "ram_total" in data
+    assert "nvs_used" in data
+    assert "nvs_free" in data
+    assert "nvs_total" in data
     assert "zones_running" in data
+
+
+def test_status_mac_format(api):
+    mac = api.get("/status")["mac"]
+    assert isinstance(mac, str)
+    parts = mac.split(":")
+    assert len(parts) == 6
+
+
+def test_status_ram_values_plausible(api):
+    data = api.get("/status")
+    assert data["ram_total"] > 0
+    assert data["ram_free"] > 0
+    assert data["ram_free"] < data["ram_total"]
+
+
+def test_status_nvs_values_plausible(api):
+    data = api.get("/status")
+    assert data["nvs_total"] > 0
+    assert data["nvs_used"] >= 0
+    assert data["nvs_free"] >= 0
+    assert data["nvs_used"] + data["nvs_free"] <= data["nvs_total"]
+
+
+def test_status_ntp_synced_is_bool(api):
+    data = api.get("/status")
+    assert isinstance(data["ntp_synced"], bool)
 
 
 def test_status_build_timestamp_format(api):

@@ -45,7 +45,7 @@ uint8_t ChangeLog::getRecent(ChangeEntry* buf, uint8_t maxCount) const {
 
 void ChangeLog::loadFromNvs() {
     Preferences prefs;
-    prefs.begin(NVS_NS, true);
+    prefs.begin(NVS_NS, false);
     _head  = prefs.getUChar(KEY_HEAD,  0);
     _count = prefs.getUChar(KEY_COUNT, 0);
     if (_count > 0) {

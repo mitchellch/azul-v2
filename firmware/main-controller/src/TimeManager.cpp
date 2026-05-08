@@ -69,7 +69,7 @@ void TimeManager::daysToIsoDate(uint32_t days, char* buf) {
 
 void TimeManager::loadFromNvs() {
     Preferences prefs;
-    prefs.begin("aztime", true);
+    prefs.begin("aztime", false);
     _tzOffset  = prefs.getInt("tz_offset", 0);
     _dstOffset = prefs.getInt("tz_dst",    0);
     prefs.end();

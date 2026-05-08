@@ -19,7 +19,7 @@ AuditLog       auditLog;
 ChangeLog      changeLog;
 Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog);
 RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager);
-BleServer      bleServer(zones);
+BleServer      bleServer(zones, auditLog);
 CLI            serialCli(zones, scheduler, auditLog);
 
 #define BLE_NOTIFY_INTERVAL_MS   5000
@@ -29,6 +29,8 @@ CLI            serialCli(zones, scheduler, auditLog);
 unsigned long lastBleNotify  = 0;
 unsigned long lastWifiCheck  = 0;
 unsigned long lastNtpSync    = 0;
+bool          restStarted    = false;
+bool          ntpStarted     = false;
 
 void setup() {
   Serial.begin(115200);
@@ -47,7 +49,9 @@ void setup() {
 
   if (wifiManager.isConnected()) {
     restServer.begin();
-    timeManager.begin(); // NTP requires WiFi
+    restStarted = true;
+    timeManager.begin();
+    ntpStarted = true;
   } else {
     Serial.println("[REST] Skipping — WiFi not connected. Use CLI to set credentials.");
     Serial.println("[Time] Skipping NTP — WiFi not connected.");
@@ -73,16 +77,21 @@ void loop() {
 
   if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS) {
     wifiManager.reconnectIfNeeded();
-    // Start REST/NTP if we just reconnected
-    if (wifiManager.isConnected() && !timeManager.isSynced()) {
-      restServer.begin();
-      timeManager.begin();
+    if (wifiManager.isConnected()) {
+      if (!restStarted) {
+        restServer.begin();
+        restStarted = true;
+      }
+      if (!ntpStarted) {
+        timeManager.begin();
+        ntpStarted = true;
+      }
     }
     lastWifiCheck = now;
   }
 
-  // Periodic NTP re-sync
-  if (now - lastNtpSync >= NTP_SYNC_INTERVAL_MS) {
+  // Periodic NTP re-sync (hourly) — only re-call begin() not restart
+  if (ntpStarted && (now - lastNtpSync >= NTP_SYNC_INTERVAL_MS)) {
     if (wifiManager.isConnected()) {
       timeManager.begin();
     }
