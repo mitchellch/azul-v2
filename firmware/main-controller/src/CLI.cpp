@@ -208,7 +208,7 @@ uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
     "help", "status", "zones", "start", "stop", "stop-all",
     "wifi-set", "wifi-status", "version",
     "schedule", "schedules", "log",
-    "tz-get", "tz-set", "reboot"
+    "tz-get", "tz-set", "nvs-dump", "reboot"
   };
   static const uint8_t cmdCount = sizeof(cmds) / sizeof(cmds[0]);
 
@@ -271,6 +271,7 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "log")         == 0) cmdLog(args);
   else if (strcmp(cmd, "tz-get")      == 0) cmdTzGet();
   else if (strcmp(cmd, "tz-set")      == 0) cmdTzSet(args);
+  else if (strcmp(cmd, "nvs-dump")    == 0) cmdNvsDump();
   else if (strcmp(cmd, "reboot")      == 0) cmdReboot();
   else Serial.printf("Unknown command: '%s'. Type 'help'.\r\n", cmd);
 }
@@ -292,6 +293,7 @@ void CLI::printHelp() {
   Serial.println("  log [N]                   Show last N audit entries (default 20)");
   Serial.println("  tz-get                    Show current timezone");
   Serial.println("  tz-set <+/-HH:MM>         Set timezone offset (e.g. tz-set -07:00)");
+  Serial.println("  nvs-dump                  Dump all NVS config (password masked)");
   Serial.println("  TAB                       Complete or list matching commands");
   Serial.println("  Ctrl-U                    Clear current line");
 }
@@ -319,7 +321,11 @@ void CLI::cmdStatus() {
       char timeBuf[32], offset[7];
       strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &t);
       _time.formatOffset(offset);
-      Serial.printf("Date/Time:     %s %s\r\n", timeBuf, offset);
+      if (_time.getTzName()[0] != '\0') {
+        Serial.printf("Date/Time:     %s %s (%s)\r\n", timeBuf, offset, _time.getTzName());
+      } else {
+        Serial.printf("Date/Time:     %s %s\r\n", timeBuf, offset);
+      }
     }
     Serial.printf("NTP:           synced\r\n");
   } else {
@@ -344,9 +350,9 @@ void CLI::cmdStatus() {
   if (active && !_scheduler.isKeepaliveActive()) {
     Serial.printf("Schedule:      %s\r\n", active->name);
   } else if (_scheduler.isKeepaliveActive()) {
-    Serial.printf("Schedule:      none [keepalive active]\r\n");
+    Serial.printf("Schedule:      none [keepalive active — data may be corrupt]\r\n");
   } else {
-    Serial.printf("Schedule:      none\r\n");
+    Serial.printf("Schedule:      none (use POST /api/schedules to create one)\r\n");
   }
 
   Serial.printf("Zones running: %s\r\n", _zones.isAnyZoneRunning() ? "yes" : "none");
@@ -523,6 +529,10 @@ void CLI::cmdLog(const char* args) {
                   compact, entries[i].zoneId, entries[i].durationSeconds,
                   (src < 4) ? srcNames[src] : "?");
   }
+}
+
+void CLI::cmdNvsDump() {
+  NvsDump::printToSerial();
 }
 
 void CLI::cmdTzGet() {

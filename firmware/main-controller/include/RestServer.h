@@ -6,6 +6,7 @@
 #include "AuditLog.h"
 #include "ChangeLog.h"
 #include "TimeManager.h"
+#include "NvsDump.h"
 
 class RestServer {
 public:
@@ -48,6 +49,7 @@ private:
   // Time
   void handleGetTime(AsyncWebServerRequest* req);
   void handleSetTime(AsyncWebServerRequest* req, JsonVariant& body);
+  void handleGetNvsDump(AsyncWebServerRequest* req);
 
   // Helpers
   void scheduleToJson(const Schedule& s, JsonObject& obj) const;

@@ -65,7 +65,8 @@ void RestServer::registerRoutes() {
 
   // ---- Status & Time ----
   _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetStatus(r); });
-  _server.on("/api/time",   HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetTime(r); });
+  _server.on("/api/time",     HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetTime(r); });
+  _server.on("/api/nvs-dump", HTTP_GET, [this](AsyncWebServerRequest* r) { handleGetNvsDump(r); });
 
   auto* setTimeHandler = new AsyncCallbackJsonWebHandler("/api/time",
     [this](AsyncWebServerRequest* r, JsonVariant& b) { handleSetTime(r, b); });
@@ -265,6 +266,13 @@ void RestServer::handleGetTime(AsyncWebServerRequest* req) {
   String out;
   serializeJson(doc, out);
   sendJson(req, 200, out);
+}
+
+void RestServer::handleGetNvsDump(AsyncWebServerRequest* req) {
+  String json = NvsDump::toJson();
+  auto* res = req->beginResponse(200, "application/json", json);
+  addCors(res);
+  req->send(res);
 }
 
 void RestServer::handleSetTime(AsyncWebServerRequest* req, JsonVariant& body) {

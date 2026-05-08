@@ -4,6 +4,7 @@
 #include "Scheduler.h"
 #include "AuditLog.h"
 #include "TimeManager.h"
+#include "NvsDump.h"
 
 class CLI {
 public:
@@ -50,5 +51,6 @@ private:
   void cmdLog(const char* args);
   void cmdTzGet();
   void cmdTzSet(const char* args);
+  void cmdNvsDump();
   void cmdReboot();
 };
