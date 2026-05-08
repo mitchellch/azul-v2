@@ -1,96 +1,218 @@
-# 3. Cloud & API Architecture
+# Cloud & API Architecture
 
-**Scope:** This document specifies the architecture for the backend cloud services that power the Azul ecosystem. It covers the API design, database schema, authentication mechanisms, and communication protocols for interacting with both mobile clients and hardware controllers.
+**Scope:** Backend cloud services for the Azul ecosystem — API design, database, authentication, device communication, and infrastructure management.
 
 ---
 
-## 1. Cloud & API Architecture
+## 1. Technology Stack
 
-### 1.1. Technology Stack
+| Concern | Development | Production |
+|---|---|---|
+| Language | TypeScript | TypeScript |
+| Runtime | Node.js | Node.js |
+| Framework | Express.js | Express.js |
+| API | AWS Lambda + API Gateway | AWS Lambda + API Gateway |
+| Database | Neon (serverless Postgres, free tier) | AWS RDS PostgreSQL |
+| ORM | Prisma | Prisma |
+| MQTT Broker | HiveMQ Cloud (free tier) | AWS IoT Core |
+| Auth | Auth0 | Auth0 |
+| IaC | Terraform | Terraform |
 
--   **Language:** **TypeScript**
--   **Runtime:** **Node.js**
--   **Framework:** **Express.js**
--   **Database:** **PostgreSQL** (via a managed service like AWS RDS or Google Cloud SQL).
--   **Database ORM:** **Prisma**
--   **Deployment Model:** **Serverless** (e.g., Vercel, AWS Lambda with API Gateway)
+---
 
-### 1.2. High-Level System Diagram
+## 2. Infrastructure Strategy
 
-This diagram illustrates the request lifecycle for a typical API call in the serverless architecture.
+### 2.1. Development: Zero-Cost Stack
+
+During development use free-tier managed services to avoid AWS instance costs:
+
+- **Neon** — serverless Postgres, free tier, no instance to stop/start
+- **HiveMQ Cloud** — managed MQTT, free tier (10 connections, 10GB/month)
+- **Lambda + API Gateway** — serverless, pay-per-request (~free at dev scale)
+- **Auth0** — existing tenant, free tier
+
+### 2.2. Terraform for Infrastructure as Code
+
+All infrastructure is defined in Terraform. Spin up and tear down on demand:
+
+```bash
+# Start a dev session
+cd server/infra
+terraform apply
+
+# Tear down when done (stops billing)
+terraform destroy
+```
+
+**Proposed Terraform module structure:**
+```
+server/
+  infra/
+    main.tf           # Provider config, shared locals
+    lambda.tf         # Lambda functions + API Gateway
+    database.tf       # RDS (prod) or Neon data source (dev)
+    mqtt.tf           # AWS IoT Core (prod) or HiveMQ config (dev)
+    auth.tf           # Auth0 Terraform provider config
+    variables.tf      # env = "dev" | "prod"
+    outputs.tf        # API URL, MQTT endpoint, DB connection string
+```
+
+Switch between dev and prod with a single variable:
+```bash
+terraform apply -var="env=dev"   # uses Neon + HiveMQ
+terraform apply -var="env=prod"  # uses RDS + IoT Core
+```
+
+### 2.3. Cost Profile
+
+| Service | Dev cost | Prod cost (est.) |
+|---|---|---|
+| Lambda + API GW | ~$0 | ~$5-20/mo |
+| Database | $0 (Neon free) | ~$15-30/mo (RDS t3.micro) |
+| MQTT | $0 (HiveMQ free) | ~$5-15/mo (IoT Core) |
+| Auth0 | $0 (free tier) | $0-23/mo |
+| **Total** | **$0** | **~$25-70/mo** |
+
+---
+
+## 3. System Architecture
 
 ```mermaid
 graph TD
-    subgraph "Clients"
-        Mobile_App(Mobile App)
-        WebApp(Web App)
+    subgraph "Mobile & Web Clients"
+        Mobile(Mobile App)
+        Web(Web App)
     end
 
     subgraph "AWS Cloud"
         API_GW(API Gateway)
-        
         subgraph "Lambda Functions"
-            Lambda_GetUser(λ getUser)
-            Lambda_UpdateSchedule(λ updateSchedule)
-            Lambda_GetHistory(λ getHistory)
+            L1(λ zones)
+            L2(λ schedules)
+            L3(λ devices)
+            L4(λ users)
         end
-
-        DB[(Managed PostgreSQL<br>e.g., RDS)]
+        DB[(PostgreSQL)]
+        MQTT(MQTT Broker)
     end
 
-    %% Client to API Gateway
-    Mobile_App -- "HTTPS Request<br>GET /users/{id}" --> API_GW
-    WebApp -- "HTTPS Request<br>POST /schedules" --> API_GW
+    subgraph "On-Site Hardware"
+        MC(Main Controller)
+        ZE1(Zone Extender 1)
+        ZE2(Zone Extender 2)
+    end
 
-    %% API Gateway to Lambdas
-    API_GW -- "Invokes" --> Lambda_GetUser
-    API_GW -- "Invokes" --> Lambda_UpdateSchedule
-    API_GW -- "Invokes" --> Lambda_GetHistory
-
-    %% Lambdas to Database
-    Lambda_GetUser -- "Prisma Client (SELECT)" --> DB
-    Lambda_UpdateSchedule -- "Prisma Client (UPDATE)" --> DB
-    Lambda_GetHistory -- "Prisma Client (SELECT)" --> DB
-
-    %% Styling
-    classDef lambda fill:#FF9900,stroke:#333,stroke-width:2px;
-    class Lambda_GetUser,Lambda_UpdateSchedule,Lambda_GetHistory lambda;
+    Mobile -- "HTTPS + Auth0 JWT" --> API_GW
+    Web -- "HTTPS + Auth0 JWT" --> API_GW
+    API_GW --> L1
+    API_GW --> L2
+    API_GW --> L3
+    API_GW --> L4
+    L1 --> DB
+    L2 --> DB
+    L3 --> DB
+    L4 --> DB
+    L3 -- "Publish command" --> MQTT
+    MC -- "Subscribe azul/{id}/cmd/#" --> MQTT
+    MC -- "Publish azul/{id}/status" --> MQTT
+    MQTT -- "Status update" --> L3
+    MC --> ZE1
+    MC --> ZE2
 ```
 
 ---
 
-## 2. Architectural Decisions: Backend
+## 4. MQTT Device Protocol
 
-### 2.1. API Implementation: Serverless Functions
+Device topic namespace: `azul/{device_mac}/`
 
-The REST API will be implemented using a serverless function architecture, combining a managed API gateway with on-demand compute, as illustrated in the diagram above.
+### 4.1. Device → Cloud (publish)
 
--   **Mechanism (AWS Example):**
-    1.  **API Gateway:** This service acts as the public "front door." It is configured with the API routes (e.g., `POST /schedules`) and is responsible for handling web traffic, authentication, caching, and throttling.
-    2.  **AWS Lambda:** Each API route is mapped to a specific Lambda function containing the business logic. When an authenticated request arrives, API Gateway invokes the corresponding function, passing it the request data. The Lambda function executes its logic (e.g., uses Prisma to query the database) and returns a response.
+| Topic | Payload | Description |
+|---|---|---|
+| `azul/{mac}/status` | JSON status object | Published every 60s and on state change |
+| `azul/{mac}/events` | JSON event object | Zone start/stop, schedule change, boot |
+| `azul/{mac}/log` | JSON log entry | Audit log entries |
 
--   **Performance & Scalability:** This model is extremely performant and scalable due to its massive parallelization capabilities. If 10,000 users make a request simultaneously, the platform simply executes 10,000 parallel instances of the function.
+### 4.2. Cloud → Device (subscribe)
 
--   **Cold Starts:** A known trade-off is the "cold start," where the first request to an idle function incurs a small latency (typically <1 second) as the container is initialized. This is a manageable issue that can be mitigated with "provisioned concurrency" for critical endpoints if necessary. For the majority of use cases, the benefits of automatic scaling far outweigh the impact of infrequent cold starts.
+| Topic | Payload | Description |
+|---|---|---|
+| `azul/{mac}/cmd/zone/start` | `{"zone":1,"duration":60}` | Start a zone |
+| `azul/{mac}/cmd/zone/stop` | `{"zone":1}` | Stop a zone |
+| `azul/{mac}/cmd/zone/stop-all` | `{}` | Stop all zones |
+| `azul/{mac}/cmd/schedule/set` | Schedule JSON | Push a new schedule |
+| `azul/{mac}/cmd/schedule/activate` | `{"uuid":"..."}` | Activate a schedule |
+| `azul/{mac}/cmd/time/set` | `{"tz_offset":-25200,"tz_name":"..."}` | Set timezone |
+| `azul/{mac}/cmd/reboot` | `{}` | Reboot device |
 
-### 2.2. Database Technology: PostgreSQL (Managed)
+### 4.3. Status Payload
 
--   **Executive Recommendation:** PostgreSQL is the definitive choice, delivered via a managed service.
--   **Justification:**
-    -   **Relational Integrity:** Perfectly matches the normalized Azul data model.
-    -   **Hybrid Power:** The `JSONB` data type provides critical flexibility for storing complex schedule data while allowing for high-performance indexing.
-    -   **Managed Scalability:** Provides one-click vertical and horizontal (read-replica) scaling, plus automated backups and maintenance.
+```json
+{
+  "firmware": "0.2.0-abc1234",
+  "uptime": 3600,
+  "ip": "192.168.1.183",
+  "mac": "AC:A7:04:26:60:D0",
+  "ntp_synced": true,
+  "datetime": "2026-05-08T11:30:00-07:00",
+  "temperature_c": 42.1,
+  "zones_running": false,
+  "active_schedule_uuid": "ed3dff10-...",
+  "ram_free": 168604,
+  "ram_total": 324308
+}
+```
 
 ---
 
-## 3. API Specification
-- 3.1. RESTful API Endpoints
-- 3.2. Real-time Communication (WebSockets / MQTT)
-- 3.3. Authentication & Authorization (Auth0/JWT)
+## 5. API Specification
 
-## 4. Database Schema
-*(For a detailed ERD and attribute list, see the [System Data Architecture](system-data-architecture.md) document).*
+### 5.1. REST Endpoints (mobile/web → backend)
 
-## 5. Hardware Communication Gateway
-- 5.1. Protocol Definition (Controller <-> Cloud)
-- 5.2. Device State Management
+Authentication: Auth0 JWT on all endpoints.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/devices` | List user's controllers |
+| GET | `/api/devices/:id` | Device status (proxied from MQTT last-will) |
+| POST | `/api/devices/:id/zones/:zoneId/start` | Start a zone remotely |
+| POST | `/api/devices/:id/zones/stop-all` | Stop all zones remotely |
+| GET | `/api/devices/:id/schedules` | List schedules for a device |
+| POST | `/api/devices/:id/schedules` | Create and push schedule to device |
+| PUT | `/api/devices/:id/schedules/:scheduleId/activate` | Activate a schedule |
+| GET | `/api/devices/:id/log` | Audit log |
+
+### 5.2. Authentication
+
+- Mobile and web clients authenticate with Auth0 (existing tenant)
+- JWTs validated at API Gateway level (Lambda authorizer)
+- Device-to-cloud MQTT uses per-device certificates or API keys (not Auth0)
+
+---
+
+## 6. Database Schema (high-level)
+
+```
+users          id, auth0_sub, email, name, created_at
+devices        id, user_id, mac, name, firmware, last_seen, ip
+zones          id, device_id, zone_number, name
+schedules      id, device_id, uuid, name, start_date, end_date, runs (JSONB)
+audit_log      id, device_id, zone_id, started_at, duration_sec, source
+```
+
+*(Full ERD: see [system-data-architecture.md](system-data-architecture.md))*
+
+---
+
+## 7. Implementation Order
+
+When ready to start the backend:
+
+1. Set up Terraform with dev stack (Neon + HiveMQ + Lambda skeleton)
+2. Basic device registration and status persistence
+3. Zone control via MQTT (cloud → device commands)
+4. Schedule sync (cloud pushes schedules to device on connect)
+5. Auth0 integration for mobile app backend calls
+6. Audit log aggregation
+7. Switch to prod stack (RDS + IoT Core) when approaching launch
