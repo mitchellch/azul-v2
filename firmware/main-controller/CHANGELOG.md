@@ -1,6 +1,6 @@
 # Firmware Changelog — Main Controller
 
-## [0.2.0] — Unreleased
+## [0.2.0] — 2026-05-07
 
 ### Added
 - Scheduling system: Schedule model, ScheduleStore (NVS ring, 5 slots), Scheduler processor

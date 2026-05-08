@@ -6,7 +6,7 @@
 // Minor: new feature, backward compatible
 // Patch: bug fix
 #define FW_VERSION_MAJOR 0
-#define FW_VERSION_MINOR 1
+#define FW_VERSION_MINOR 2
 #define FW_VERSION_PATCH 0
 
 // Injected at build time by scripts/inject_version.py — do not edit manually.
