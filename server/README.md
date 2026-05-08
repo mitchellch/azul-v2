@@ -4,9 +4,57 @@ Node.js/TypeScript backend for the Azul irrigation system. Not yet implemented.
 
 ## Status (May 2026)
 
-Architecture designed, infrastructure strategy defined. Ready to build when firmware and mobile app foundations are stable.
+v0.1.0 skeleton running locally. Express API + Prisma ORM + MQTT client wired up.
+Docker Compose runs Postgres and Mosquitto locally — zero cloud cost during development.
 
 See [Cloud API Architecture](../docs/design/cloud-api-architecture.md) for full design details.
+
+## Quick Start (Local Development)
+
+### Prerequisites
+- Node.js 20+
+- Docker Desktop
+
+### 1. Install Docker Desktop
+Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+### 2. Start local services
+```bash
+cd server
+docker-compose up -d
+```
+This starts:
+- PostgreSQL on port 5432
+- Mosquitto MQTT broker on port 1883 (and 9001 for WebSocket)
+
+### 3. Install dependencies and set up database
+```bash
+npm install
+cp .env.example .env.local
+npm run db:migrate
+npm run db:generate
+```
+
+### 4. Start the API server
+```bash
+npm run dev
+```
+Server runs at `http://localhost:3000`
+
+### 5. Verify
+```bash
+curl http://localhost:3000/health
+# {"ok":true,"uptime":...}
+
+curl http://localhost:3000/api/devices
+# []
+```
+
+### Stop local services
+```bash
+docker-compose down        # stop but keep data
+docker-compose down -v     # stop and wipe database
+```
 
 ---
 

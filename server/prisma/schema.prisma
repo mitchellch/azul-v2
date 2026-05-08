@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  auth0Sub  String   @unique @map("auth0_sub")
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  devices   Device[]
+
+  @@map("users")
+}
+
+model Device {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  mac        String    @unique
+  name       String    @default("Azul Controller")
+  firmware   String?
+  ipAddress  String?   @map("ip_address")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id])
+  zones      Zone[]
+  auditLog   AuditLog[]
+
+  @@map("devices")
+}
+
+model Zone {
+  id       String @id @default(uuid())
+  deviceId String @map("device_id")
+  number   Int
+  name     String @default("")
+
+  device   Device     @relation(fields: [deviceId], references: [id])
+  auditLog AuditLog[]
+
+  @@unique([deviceId, number])
+  @@map("zones")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  deviceId        String   @map("device_id")
+  zoneId          String?  @map("zone_id")
+  zoneNumber      Int      @map("zone_number")
+  startedAt       DateTime @map("started_at")
+  durationSeconds Int      @map("duration_seconds")
+  source          String   // "scheduler" | "manual_rest" | "manual_ble" | "manual_cli"
+
+  device Device  @relation(fields: [deviceId], references: [id])
+  zone   Zone?   @relation(fields: [zoneId], references: [id])
+
+  @@map("audit_log")
+}
