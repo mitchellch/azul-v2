@@ -6,8 +6,8 @@
 // Command characteristic write handler
 class ZoneCmdCallback : public NimBLECharacteristicCallbacks {
 public:
-  ZoneCmdCallback(ZoneController& zones, AuditLog& audit)
-    : _zones(zones), _audit(audit) {}
+  ZoneCmdCallback(ZoneController& zones, AuditLog& audit, ZoneQueue& queue)
+    : _zones(zones), _audit(audit), _queue(queue) {}
 
   void onWrite(NimBLECharacteristic* chr) override {
     std::string val = chr->getValue();
@@ -23,14 +23,12 @@ public:
     if (strcmp(cmd, "start") == 0) {
       uint8_t zone = doc["zone"] | 0;
       uint16_t duration = doc["duration"] | 60;
-      if (_zones.startZone(zone, duration)) {
-        _audit.append(zone, duration, AuditSource::MANUAL_BLE);
-      }
+      _queue.enqueue(zone, duration, AuditSource::MANUAL_BLE);
     } else if (strcmp(cmd, "stop") == 0) {
       uint8_t zone = doc["zone"] | 0;
-      _zones.stopZone(zone);
+      _queue.cancel(zone);
     } else if (strcmp(cmd, "stop-all") == 0) {
-      _zones.stopAll();
+      _queue.cancelAll();
     } else {
       Logger::log("[BLE] Unknown command: %s", cmd);
     }
@@ -39,10 +37,11 @@ public:
 private:
   ZoneController& _zones;
   AuditLog&       _audit;
+  ZoneQueue&      _queue;
 };
 
-BleServer::BleServer(ZoneController& zones, AuditLog& audit)
-  : _zones(zones), _audit(audit), _statusChar(nullptr), _zoneDataChar(nullptr) {}
+BleServer::BleServer(ZoneController& zones, AuditLog& audit, ZoneQueue& queue)
+  : _zones(zones), _audit(audit), _queue(queue), _statusChar(nullptr), _zoneDataChar(nullptr) {}
 
 void BleServer::begin() {
   NimBLEDevice::init("Azul-Controller");
@@ -65,7 +64,7 @@ void BleServer::begin() {
     AZUL_BLE_CHAR_ZONE_CMD_UUID,
     NIMBLE_PROPERTY::WRITE
   );
-  cmdChar->setCallbacks(new ZoneCmdCallback(_zones, _audit));
+  cmdChar->setCallbacks(new ZoneCmdCallback(_zones, _audit, _queue));
   cmdChar->createDescriptor("2901")->setValue("Zone Command");
 
   // Zone data characteristic — read only

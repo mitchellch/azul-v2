@@ -19,12 +19,13 @@ static void buildKeepaliveSchedule(Schedule& s) {
 }
 
 Scheduler::Scheduler(TimeManager& time, ZoneController& zones,
-                     ScheduleStore& store, AuditLog& audit, ChangeLog& changelog)
+                     ScheduleStore& store, AuditLog& audit, ChangeLog& changelog,
+                     ZoneQueue& queue)
     : _time(time), _zones(zones), _store(store), _audit(audit), _changelog(changelog),
+      _queue(queue),
       _activeLoaded(false), _usingKeepalive(false),
-      _lastFiredDay(-1), _lastFiredHour(-1), _lastFiredMin(-1)
+      _firedToday(0), _lastFiredDay(-1)
 {
-    memset(_runQueue, 0, sizeof(_runQueue));
 }
 
 void Scheduler::begin() {
@@ -63,7 +64,6 @@ void Scheduler::tick() {
     struct tm now;
     if (!_time.getLocalTime(now)) return;
 
-    processQueue();
     checkAndFireRuns(now);
 }
 
@@ -73,49 +73,22 @@ void Scheduler::checkAndFireRuns(const struct tm& now) {
     // Only fire if within schedule date range
     if (today < _active.startDate || today > _active.endDate) return;
 
-    for (uint8_t i = 0; i < _active.runCount; i++) {
+    // Reset per-run fired flags at midnight (but not on very first tick)
+    if (_lastFiredDay >= 0 && now.tm_yday != _lastFiredDay) {
+        _firedToday = 0;
+    }
+    _lastFiredDay = now.tm_yday;
+
+    for (uint8_t i = 0; i < _active.runCount && i < 32; i++) {
         const ScheduleRun& r = _active.runs[i];
         if (!runsToday(r, now)) continue;
-        if (r.hour != (uint8_t)now.tm_hour) continue;
-        if (r.minute != (uint8_t)now.tm_min) continue;
+        if (r.hour   != (uint8_t)now.tm_hour) continue;
+        if (r.minute != (uint8_t)now.tm_min)  continue;
+        if (_firedToday & (1u << i)) continue;
 
-        // Dedup: don't fire same run twice in the same minute
-        if (now.tm_yday  == _lastFiredDay &&
-            now.tm_hour  == _lastFiredHour &&
-            now.tm_min   == _lastFiredMin) continue;
-
-        _lastFiredDay  = now.tm_yday;
-        _lastFiredHour = now.tm_hour;
-        _lastFiredMin  = now.tm_min;
-
-        enqueueRun(r.zoneId, r.durationSeconds, AuditSource::SCHEDULER);
+        _firedToday |= (1u << i);
+        _queue.enqueue(r.zoneId, r.durationSeconds, AuditSource::SCHEDULER);
     }
-}
-
-void Scheduler::processQueue() {
-    if (_zones.isAnyZoneRunning()) return;
-
-    for (uint8_t i = 0; i < 2; i++) {
-        if (_runQueue[i].pending) {
-            _runQueue[i].pending = false;
-            _zones.startZone(_runQueue[i].zoneId, _runQueue[i].durationSec);
-            _audit.append(_runQueue[i].zoneId, _runQueue[i].durationSec,
-                          AuditSource::SCHEDULER);
-            Logger::log("[Scheduler] Started zone %d for %ds",
-                        _runQueue[i].zoneId, _runQueue[i].durationSec);
-            return; // one at a time
-        }
-    }
-}
-
-void Scheduler::enqueueRun(uint8_t zoneId, uint16_t durationSec, AuditSource source) {
-    for (uint8_t i = 0; i < 2; i++) {
-        if (!_runQueue[i].pending) {
-            _runQueue[i] = {zoneId, durationSec, true};
-            return;
-        }
-    }
-    Logger::log("[Scheduler] Queue full — dropping zone %d run", zoneId);
 }
 
 bool Scheduler::runsToday(const ScheduleRun& r, const struct tm& now) const {
@@ -201,9 +174,8 @@ ValidationResult Scheduler::activateSchedule(const char* uuid) {
     _active         = s;
     _activeLoaded   = true;
     _usingKeepalive = false;
-    _lastFiredDay   = -1; // reset dedup so new schedule fires correctly
-    _lastFiredHour  = -1;
-    _lastFiredMin   = -1;
+    _firedToday     = 0;   // reset dedup so new schedule fires correctly
+    _lastFiredDay   = -1;
 
     _changelog.append(uuid, ChangeOp::ACTIVATE);
     Logger::log("[Scheduler] Activated schedule: %s", s.name);

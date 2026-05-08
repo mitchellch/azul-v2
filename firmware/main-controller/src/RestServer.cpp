@@ -5,9 +5,10 @@
 #include <nvs.h>
 
 RestServer::RestServer(ZoneController& zones, Scheduler& scheduler,
-                       AuditLog& audit, ChangeLog& changelog, TimeManager& time)
+                       AuditLog& audit, ChangeLog& changelog, TimeManager& time,
+                       ZoneQueue& queue)
   : _server(80), _zones(zones), _scheduler(scheduler),
-    _audit(audit), _changelog(changelog), _time(time) {}
+    _audit(audit), _changelog(changelog), _time(time), _queue(queue) {}
 
 void RestServer::begin() {
   registerRoutes();
@@ -324,17 +325,20 @@ void RestServer::handleGetZone(AsyncWebServerRequest* req) {
 void RestServer::handleStartZone(AsyncWebServerRequest* req, JsonVariant& body) {
   uint8_t id = atoi(req->pathArg(0).c_str());
   uint32_t duration = body["duration"] | 60;
-  if (_zones.startZone(id, duration)) {
-    _audit.append(id, (uint16_t)duration, AuditSource::MANUAL_REST);
+  if (!_zones.getZone(id)) {
+    sendJson(req, 404, "{\"error\":\"Zone not found\"}");
+    return;
+  }
+  if (_queue.enqueue(id, (uint16_t)duration, AuditSource::MANUAL_REST)) {
     sendJson(req, 200, "{\"ok\":true}");
   } else {
-    sendJson(req, 404, "{\"error\":\"Zone not found\"}");
+    sendJson(req, 503, "{\"error\":\"Queue full\"}");
   }
 }
 
 void RestServer::handleStopZone(AsyncWebServerRequest* req) {
   uint8_t id = atoi(req->pathArg(0).c_str());
-  if (_zones.stopZone(id)) {
+  if (_queue.cancel(id)) {
     sendJson(req, 200, "{\"ok\":true}");
   } else {
     sendJson(req, 404, "{\"error\":\"Zone not found\"}");
@@ -342,7 +346,7 @@ void RestServer::handleStopZone(AsyncWebServerRequest* req) {
 }
 
 void RestServer::handleStopAll(AsyncWebServerRequest* req) {
-  _zones.stopAll();
+  _queue.cancelAll();
   sendJson(req, 200, "{\"ok\":true}");
 }
 

@@ -5,10 +5,12 @@
 #include "AuditLog.h"
 #include "TimeManager.h"
 #include "NvsDump.h"
+#include "ZoneQueue.h"
 
 class CLI {
 public:
-  CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit, TimeManager& time);
+  CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit,
+      TimeManager& time, ZoneQueue& queue);
   void begin();
   void poll();
   void printPrompt();
@@ -18,6 +20,7 @@ private:
   Scheduler&      _scheduler;
   AuditLog&       _audit;
   TimeManager&    _time;
+  ZoneQueue&      _queue;
 
   char _buf[128];
   uint8_t _bufLen;

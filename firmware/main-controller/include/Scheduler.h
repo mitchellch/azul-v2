@@ -5,6 +5,7 @@
 #include "ChangeLog.h"
 #include "ZoneController.h"
 #include "TimeManager.h"
+#include "ZoneQueue.h"
 
 struct ValidationResult {
     bool ok;
@@ -19,7 +20,8 @@ struct ValidationResult {
 class Scheduler {
 public:
     Scheduler(TimeManager& time, ZoneController& zones,
-              ScheduleStore& store, AuditLog& audit, ChangeLog& changelog);
+              ScheduleStore& store, AuditLog& audit, ChangeLog& changelog,
+              ZoneQueue& queue);
 
     void begin();
     void tick();
@@ -39,33 +41,24 @@ public:
     bool isTimeSynced() const;
 
 private:
-    TimeManager&   _time;
+    TimeManager&    _time;
     ZoneController& _zones;
-    ScheduleStore& _store;
-    AuditLog&      _audit;
-    ChangeLog&     _changelog;
+    ScheduleStore&  _store;
+    AuditLog&       _audit;
+    ChangeLog&      _changelog;
+    ZoneQueue&      _queue;
 
     Schedule _active;
     bool     _activeLoaded;
     bool     _usingKeepalive;
 
-    struct QueuedRun {
-        uint8_t  zoneId;
-        uint16_t durationSec;
-        bool     pending;
-    };
-    QueuedRun _runQueue[2];
-
-    // De-duplication: track last fired run
-    int  _lastFiredDay;
-    int  _lastFiredHour;
-    int  _lastFiredMin;
+    // De-duplication: bitmask of run indices fired today (reset at midnight)
+    uint32_t _firedToday;   // bit i = run index i has been enqueued today
+    int      _lastFiredDay; // day-of-year for midnight reset
 
     void loadActiveSchedule();
     void checkAndFireRuns(const struct tm& now);
-    void processQueue();
     bool runsToday(const ScheduleRun& r, const struct tm& now) const;
     bool wouldOverlap(const Schedule& candidate) const;
     void buildKeepalive(Schedule& out) const;
-    void enqueueRun(uint8_t zoneId, uint16_t durationSec, AuditSource source);
 };

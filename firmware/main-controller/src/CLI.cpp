@@ -21,8 +21,9 @@ static void reprintPrompt() {
   if (s_instance) s_instance->printPrompt();
 }
 
-CLI::CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit, TimeManager& time)
-  : _zones(zones), _scheduler(scheduler), _audit(audit), _time(time), _bufLen(0),
+CLI::CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit,
+         TimeManager& time, ZoneQueue& queue)
+  : _zones(zones), _scheduler(scheduler), _audit(audit), _time(time), _queue(queue), _bufLen(0),
     _historyCount(0), _historyHead(0), _historyPos(-1),
     _escState(0) {
   memset(_buf, 0, sizeof(_buf));
@@ -366,14 +367,35 @@ void CLI::cmdVersion() {
 }
 
 void CLI::cmdZones() {
+  // Build a lookup of queued zones
+  QueueEntry pending[ZONE_QUEUE_DEPTH];
+  uint8_t pendingCount = _queue.getPending(pending, ZONE_QUEUE_DEPTH);
+
   Serial.println("ID  Name                     Status    Remaining");
   Serial.println("--  -----------------------  --------  ---------");
   for (uint8_t i = 0; i < _zones.getZoneCount(); i++) {
     const Zone* z = _zones.getZone(i + 1);
+    const char* status = "idle";
+    uint32_t remaining = 0;
+
+    if (z->status == ZoneStatus::RUNNING) {
+      status = "running";
+      remaining = z->runtimeSeconds;
+    } else {
+      // Check if queued
+      for (uint8_t q = 0; q < pendingCount; q++) {
+        if (pending[q].zoneId == z->id) {
+          status = "queued";
+          remaining = pending[q].durationSeconds;
+          break;
+        }
+      }
+    }
     Serial.printf("%-3d %-24s %-9s %lu s\r\n",
-      z->id, z->name,
-      z->status == ZoneStatus::RUNNING ? "running" : "idle",
-      z->runtimeSeconds);
+                  z->id, z->name, status, remaining);
+  }
+  if (pendingCount > 0) {
+    Serial.printf("Queue: %d pending\r\n", pendingCount);
   }
 }
 
@@ -385,27 +407,35 @@ void CLI::cmdStart(const char* args) {
     Serial.println("Usage: start <zone_id> [duration_seconds]");
     return;
   }
-  if (_zones.startZone(zoneId, duration)) {
-    _audit.append(zoneId, (uint16_t)duration, AuditSource::MANUAL_CLI);
-    Serial.printf("Zone %d started for %lu seconds\r\n", zoneId, duration);
-  } else {
+  if (!_zones.getZone(zoneId)) {
     Serial.printf("Invalid zone ID: %d\r\n", zoneId);
+    return;
+  }
+  bool wasRunning = _zones.isAnyZoneRunning();
+  if (_queue.enqueue(zoneId, (uint16_t)duration, AuditSource::MANUAL_CLI)) {
+    if (wasRunning) {
+      Serial.printf("Zone %d queued (%d waiting)\r\n", zoneId, _queue.count());
+    } else {
+      Serial.printf("Zone %d started for %lu seconds\r\n", zoneId, duration);
+    }
+  } else {
+    Serial.println("Queue full");
   }
 }
 
 void CLI::cmdStop(const char* args) {
   uint8_t zoneId = atoi(args);
   if (zoneId == 0) { Serial.println("Usage: stop <zone_id>"); return; }
-  if (_zones.stopZone(zoneId)) {
-    Serial.printf("Zone %d stopped\r\n", zoneId);
+  if (_queue.cancel(zoneId)) {
+    Serial.printf("Zone %d stopped/dequeued\r\n", zoneId);
   } else {
-    Serial.printf("Invalid zone ID: %d\r\n", zoneId);
+    Serial.printf("Zone %d not running or queued\r\n", zoneId);
   }
 }
 
 void CLI::cmdStopAll() {
-  _zones.stopAll();
-  Serial.println("All zones stopped");
+  _queue.cancelAll();
+  Serial.println("All zones stopped and queue cleared");
 }
 
 void CLI::cmdWifiSet(const char* args) {

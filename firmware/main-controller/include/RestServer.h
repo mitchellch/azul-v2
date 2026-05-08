@@ -7,11 +7,13 @@
 #include "ChangeLog.h"
 #include "TimeManager.h"
 #include "NvsDump.h"
+#include "ZoneQueue.h"
 
 class RestServer {
 public:
   RestServer(ZoneController& zones, Scheduler& scheduler,
-             AuditLog& audit, ChangeLog& changelog, TimeManager& time);
+             AuditLog& audit, ChangeLog& changelog, TimeManager& time,
+             ZoneQueue& queue);
   void begin();
 
 private:
@@ -21,6 +23,7 @@ private:
   AuditLog&       _audit;
   ChangeLog&      _changelog;
   TimeManager&    _time;
+  ZoneQueue&      _queue;
 
   void registerRoutes();
 

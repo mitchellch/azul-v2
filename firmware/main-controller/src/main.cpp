@@ -10,6 +10,8 @@
 #include "RestServer.h"
 #include "BleServer.h"
 #include "CLI.h"
+#include "ZoneLed.h"
+#include "ZoneQueue.h"
 
 ZoneController zones;
 WiFiManager    wifiManager;
@@ -17,10 +19,12 @@ TimeManager    timeManager;
 ScheduleStore  scheduleStore;
 AuditLog       auditLog;
 ChangeLog      changeLog;
-Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog);
-RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager);
-BleServer      bleServer(zones, auditLog);
-CLI            serialCli(zones, scheduler, auditLog, timeManager);
+ZoneQueue      zoneQueue(zones, auditLog);
+Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog, zoneQueue);
+RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue);
+BleServer      bleServer(zones, auditLog, zoneQueue);
+CLI            serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
+ZoneLed        zoneLed(zones);
 
 #define BLE_NOTIFY_INTERVAL_MS   5000
 #define WIFI_CHECK_INTERVAL_MS  30000
@@ -59,6 +63,7 @@ void setup() {
 
   bleServer.begin();
   serialCli.begin();
+  zoneLed.begin();
 
   Logger::log("[Azul] Boot complete");
 }
@@ -67,7 +72,9 @@ void loop() {
   unsigned long now = millis();
 
   zones.tick();
+  zoneQueue.tick();
   scheduler.tick();
+  zoneLed.tick();
   serialCli.poll();
 
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {
