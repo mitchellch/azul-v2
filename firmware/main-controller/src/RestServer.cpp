@@ -244,10 +244,15 @@ void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
 void RestServer::handleGetTime(AsyncWebServerRequest* req) {
   JsonDocument doc;
   time_t t = _time.now();
-  doc["epoch"]     = (uint32_t)t;
-  doc["synced"]    = _time.isSynced();
-  doc["tz_offset"] = _time.getTzOffset();
-  doc["tz_dst"]    = _time.getDstOffset();
+  char tzOffsetStr[7];
+  _time.formatOffset(tzOffsetStr);
+  doc["epoch"]       = (uint32_t)t;
+  doc["synced"]      = _time.isSynced();
+  doc["tz_offset"]   = _time.getTzOffset();
+  doc["tz_dst"]      = _time.getDstOffset();
+  doc["tz_offset_str"] = tzOffsetStr;
+  doc["tz_name"]     = _time.getTzName();
+  doc["tz_manual"]   = _time.isTzManual();
 
   if (t > 0) {
     struct tm tm;
@@ -266,6 +271,10 @@ void RestServer::handleSetTime(AsyncWebServerRequest* req, JsonVariant& body) {
   int32_t tzOffset = body["tz_offset"] | 0;
   int32_t tzDst    = body["tz_dst"]    | 0;
   _time.setTzOffset(tzOffset, tzDst);
+  // Optional timezone name from client (e.g. "America/Los_Angeles")
+  if (body["tz_name"].is<const char*>()) {
+    _time.setTzName(body["tz_name"].as<const char*>());
+  }
   sendJson(req, 200, "{\"ok\":true}");
 }
 

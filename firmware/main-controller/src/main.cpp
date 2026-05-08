@@ -20,7 +20,7 @@ ChangeLog      changeLog;
 Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog);
 RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager);
 BleServer      bleServer(zones, auditLog);
-CLI            serialCli(zones, scheduler, auditLog);
+CLI            serialCli(zones, scheduler, auditLog, timeManager);
 
 #define BLE_NOTIFY_INTERVAL_MS   5000
 #define WIFI_CHECK_INTERVAL_MS  30000

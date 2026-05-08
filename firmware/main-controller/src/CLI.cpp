@@ -21,8 +21,8 @@ static void reprintPrompt() {
   if (s_instance) s_instance->printPrompt();
 }
 
-CLI::CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit)
-  : _zones(zones), _scheduler(scheduler), _audit(audit), _bufLen(0),
+CLI::CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit, TimeManager& time)
+  : _zones(zones), _scheduler(scheduler), _audit(audit), _time(time), _bufLen(0),
     _historyCount(0), _historyHead(0), _historyPos(-1),
     _escState(0) {
   memset(_buf, 0, sizeof(_buf));
@@ -207,7 +207,8 @@ uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
   static const char* cmds[] = {
     "help", "status", "zones", "start", "stop", "stop-all",
     "wifi-set", "wifi-status", "version",
-    "schedule", "schedules", "log", "reboot"
+    "schedule", "schedules", "log",
+    "tz-get", "tz-set", "reboot"
   };
   static const uint8_t cmdCount = sizeof(cmds) / sizeof(cmds[0]);
 
@@ -268,6 +269,8 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "schedule")    == 0) cmdSchedule();
   else if (strcmp(cmd, "schedules")   == 0) cmdSchedules();
   else if (strcmp(cmd, "log")         == 0) cmdLog(args);
+  else if (strcmp(cmd, "tz-get")      == 0) cmdTzGet();
+  else if (strcmp(cmd, "tz-set")      == 0) cmdTzSet(args);
   else if (strcmp(cmd, "reboot")      == 0) cmdReboot();
   else Serial.printf("Unknown command: '%s'. Type 'help'.\r\n", cmd);
 }
@@ -287,6 +290,8 @@ void CLI::printHelp() {
   Serial.println("  schedule                  Show active schedule");
   Serial.println("  schedules                 List all stored schedules");
   Serial.println("  log [N]                   Show last N audit entries (default 20)");
+  Serial.println("  tz-get                    Show current timezone");
+  Serial.println("  tz-set <+/-HH:MM>         Set timezone offset (e.g. tz-set -07:00)");
   Serial.println("  TAB                       Complete or list matching commands");
   Serial.println("  Ctrl-U                    Clear current line");
 }
@@ -308,7 +313,18 @@ void CLI::cmdStatus() {
     Serial.printf("WiFi:          disconnected\r\n");
   }
   Serial.printf("MAC:           %s\r\n", WiFi.macAddress().c_str());
-  Serial.printf("NTP:           %s\r\n", _scheduler.isTimeSynced() ? "synced" : "not synced");
+  if (_scheduler.isTimeSynced()) {
+    struct tm t;
+    if (_time.getLocalTime(t)) {
+      char timeBuf[32], offset[7];
+      strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &t);
+      _time.formatOffset(offset);
+      Serial.printf("Date/Time:     %s %s\r\n", timeBuf, offset);
+    }
+    Serial.printf("NTP:           synced\r\n");
+  } else {
+    Serial.printf("NTP:           not synced\r\n");
+  }
   Serial.printf("RAM:           %lu used (%lu%%) / %lu total / %lu free (%lu%%)\r\n",
                 usedHeap, usedHeap * 100 / totalHeap,
                 totalHeap,
@@ -507,6 +523,39 @@ void CLI::cmdLog(const char* args) {
                   compact, entries[i].zoneId, entries[i].durationSeconds,
                   (src < 4) ? srcNames[src] : "?");
   }
+}
+
+void CLI::cmdTzGet() {
+  char offset[7];
+  _time.formatOffset(offset);
+  Serial.printf("Offset:    %s\r\n", offset);
+  if (_time.getTzName()[0] != '\0') {
+    Serial.printf("Name:      %s\r\n", _time.getTzName());
+  }
+  Serial.printf("Source:    %s\r\n", _time.isTzManual() ? "manual" : "not set");
+}
+
+void CLI::cmdTzSet(const char* args) {
+  if (!args || args[0] == '\0') {
+    Serial.println("Usage: tz-set <+/-HH:MM>");
+    Serial.println("  Examples: tz-set +00:00   (UTC)");
+    Serial.println("            tz-set -07:00   (Mountain Standard)");
+    Serial.println("            tz-set -06:00   (Mountain Daylight / Central Standard)");
+    Serial.println("            tz-set -05:00   (Central Daylight / Eastern Standard)");
+    Serial.println("            tz-set +05:30   (India)");
+    return;
+  }
+
+  int32_t offsetSec = 0;
+  if (!TimeManager::parseOffset(args, offsetSec)) {
+    Serial.println("Invalid format. Use +HH:MM or -HH:MM (e.g. -07:00)");
+    return;
+  }
+
+  _time.setTzOffset(offsetSec, 0); // DST=0; user sets total offset inclusive of DST
+  char buf[7];
+  _time.formatOffset(buf);
+  Serial.printf("Timezone set to %s. Reboot to apply to NTP.\r\n", buf);
 }
 
 void CLI::cmdReboot() {

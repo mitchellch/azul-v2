@@ -3,10 +3,11 @@
 #include "ZoneController.h"
 #include "Scheduler.h"
 #include "AuditLog.h"
+#include "TimeManager.h"
 
 class CLI {
 public:
-  CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit);
+  CLI(ZoneController& zones, Scheduler& scheduler, AuditLog& audit, TimeManager& time);
   void begin();
   void poll();
   void printPrompt();
@@ -15,6 +16,7 @@ private:
   ZoneController& _zones;
   Scheduler&      _scheduler;
   AuditLog&       _audit;
+  TimeManager&    _time;
 
   char _buf[128];
   uint8_t _bufLen;
@@ -46,5 +48,7 @@ private:
   void cmdSchedule();
   void cmdSchedules();
   void cmdLog(const char* args);
+  void cmdTzGet();
+  void cmdTzSet(const char* args);
   void cmdReboot();
 };
