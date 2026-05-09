@@ -104,6 +104,20 @@ void TimeManager::daysToIsoDate(uint32_t days, char* buf) {
              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
 }
 
+void TimeManager::setLocation(float lat, float lon) {
+    _lat = lat;
+    _lon = lon;
+    _hasLocation = true;
+
+    Preferences prefs;
+    prefs.begin("aztime", false);
+    prefs.putFloat("lat", _lat);
+    prefs.putFloat("lon", _lon);
+    prefs.end();
+
+    Logger::log("[Time] Location set: %.5f, %.5f", _lat, _lon);
+}
+
 void TimeManager::loadFromNvs() {
     Preferences prefs;
     prefs.begin("aztime", false);
@@ -112,6 +126,11 @@ void TimeManager::loadFromNvs() {
     _tzManual  = prefs.getBool("tz_manual", false);
     String name = prefs.getString("tz_name", "UTC");
     strlcpy(_tzName, name.c_str(), sizeof(_tzName));
+    if (prefs.isKey("lat")) {
+        _lat = prefs.getFloat("lat", 0.0f);
+        _lon = prefs.getFloat("lon", 0.0f);
+        _hasLocation = true;
+    }
     prefs.end();
 }
 

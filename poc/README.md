@@ -1,5 +1,8 @@
 # Azul Proof-of-Concept
 
-Hardware and firmware validation milestones using the ESP32-S3-DevKitC-1-N8R8.
+Milestone tracking for hardware validation and feature implementation.
 
-See the [PoC Dashboard](basic/PoC_Dashboard.md) for full milestone status and links to detailed implementation steps.
+| Track | Description | Dashboard |
+| :--- | :--- | :--- |
+| **basic** | Hardware and firmware bring-up on ESP32-S3 | [Dashboard](basic/PoC_Dashboard.md) |
+| **ble-mobile** | BLE-based mobile control — adoption, config, schedules, logs | [Dashboard](ble-mobile/dashboard.md) |

@@ -58,7 +58,7 @@ private:
 
     void loadActiveSchedule();
     void checkAndFireRuns(const struct tm& now);
-    bool runsToday(const ScheduleRun& r, const struct tm& now) const;
+    bool runsToday(const ScheduleRun& r, const struct tm& now, uint32_t today) const;
     bool wouldOverlap(const Schedule& candidate) const;
     void buildKeepalive(Schedule& out) const;
 };

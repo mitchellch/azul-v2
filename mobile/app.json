@@ -32,7 +32,15 @@
       "expo-web-browser",
       "expo-router",
       "expo-secure-store",
-      ["react-native-auth0", { "domain": "dev-cgrr5v7lsr3wbpcj.us.auth0.com" }]
+      ["react-native-auth0", { "domain": "dev-cgrr5v7lsr3wbpcj.us.auth0.com" }],
+      ["react-native-ble-plx", {
+        "isBackgroundEnabled": false,
+        "modes": ["central"],
+        "bluetoothAlwaysPermission": "Allow Azul to connect to your irrigation controller"
+      }],
+      ["expo-location", {
+        "locationWhenInUsePermission": "Allow Azul to read your location to sync GPS coordinates to your controller."
+      }]
     ]
   }
 }

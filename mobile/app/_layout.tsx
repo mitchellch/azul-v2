@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore } from '@/store/auth';
 import { refreshSession, parseIdToken } from '@/services/auth';
 
@@ -37,9 +38,9 @@ function AuthGuard() {
 
 export default function RootLayout() {
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthGuard />
       <Stack screenOptions={{ headerShown: false }} />
-    </>
+    </GestureHandlerRootView>
   );
 }

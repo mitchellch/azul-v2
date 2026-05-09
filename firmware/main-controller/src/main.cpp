@@ -9,6 +9,7 @@
 #include "Scheduler.h"
 #include "RestServer.h"
 #include "BleServer.h"
+#include "ClaimManager.h"
 #include "CLI.h"
 #include "ZoneLed.h"
 #include "ZoneQueue.h"
@@ -22,7 +23,8 @@ ChangeLog      changeLog;
 ZoneQueue      zoneQueue(zones, auditLog);
 Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog, zoneQueue);
 RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue);
-BleServer      bleServer(zones, auditLog, zoneQueue);
+ClaimManager   claimMgr;
+BleServer      bleServer(zones, auditLog, zoneQueue, scheduler, claimMgr, timeManager);
 CLI            serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
 ZoneLed        zoneLed(zones);
 
@@ -44,6 +46,8 @@ void setup() {
 
   Serial.println("\n[Azul] Main Controller booting...");
 
+  claimMgr.begin();
+  zones.begin();
   scheduleStore.begin();
   auditLog.begin();
   changeLog.begin();
@@ -76,6 +80,7 @@ void loop() {
   scheduler.tick();
   zoneLed.tick();
   serialCli.poll();
+  bleServer.tick();
 
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {
     bleServer.notifyStatus();

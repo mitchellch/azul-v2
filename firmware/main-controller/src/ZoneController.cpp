@@ -1,6 +1,8 @@
 #include "ZoneController.h"
 #ifndef UNIT_TEST
 #include "Logger.h"
+#include <Preferences.h>
+static const char* NVS_NS = "zones";
 #endif
 
 ZoneController::ZoneController() : _lastTickMs(0) {
@@ -41,9 +43,33 @@ const Zone* ZoneController::getZone(uint8_t zoneId) const {
   return &_zones[zoneId - 1];
 }
 
+void ZoneController::begin() {
+#ifndef UNIT_TEST
+  Preferences prefs;
+  prefs.begin(NVS_NS, true);
+  char key[4];
+  for (uint8_t i = 0; i < MAX_ZONES; i++) {
+    snprintf(key, sizeof(key), "z%d", i + 1);
+    String stored = prefs.getString(key, "");
+    if (stored.length() > 0) {
+      strlcpy(_zones[i].name, stored.c_str(), sizeof(_zones[i].name));
+    }
+  }
+  prefs.end();
+#endif
+}
+
 void ZoneController::setZoneName(uint8_t zoneId, const char* name) {
   if (zoneId < 1 || zoneId > MAX_ZONES) return;
   strlcpy(_zones[zoneId - 1].name, name, sizeof(_zones[zoneId - 1].name));
+#ifndef UNIT_TEST
+  Preferences prefs;
+  prefs.begin(NVS_NS, false);
+  char key[4];
+  snprintf(key, sizeof(key), "z%d", zoneId);
+  prefs.putString(key, name);
+  prefs.end();
+#endif
 }
 
 void ZoneController::tick() {

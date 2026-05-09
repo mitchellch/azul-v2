@@ -3,6 +3,7 @@
 #include "arduino_stub.h"
 #else
 #include <Arduino.h>
+#include <Preferences.h>
 #endif
 
 #define MAX_ZONES 8
@@ -19,6 +20,7 @@ struct Zone {
 class ZoneController {
 public:
   ZoneController();
+  void begin(); // load persisted zone names from NVS
 
   bool startZone(uint8_t zoneId, uint32_t durationSeconds);
   bool stopZone(uint8_t zoneId);

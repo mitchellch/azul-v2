@@ -81,7 +81,7 @@ void Scheduler::checkAndFireRuns(const struct tm& now) {
 
     for (uint8_t i = 0; i < _active.runCount && i < 32; i++) {
         const ScheduleRun& r = _active.runs[i];
-        if (!runsToday(r, now)) continue;
+        if (!runsToday(r, now, today)) continue;
         if (r.hour   != (uint8_t)now.tm_hour) continue;
         if (r.minute != (uint8_t)now.tm_min)  continue;
         if (_firedToday & (1u << i)) continue;
@@ -91,7 +91,10 @@ void Scheduler::checkAndFireRuns(const struct tm& now) {
     }
 }
 
-bool Scheduler::runsToday(const ScheduleRun& r, const struct tm& now) const {
+bool Scheduler::runsToday(const ScheduleRun& r, const struct tm& now, uint32_t today) const {
+    if (r.intervalDays >= 2) {
+        return (today - _active.startDate) % r.intervalDays == 0;
+    }
     return (r.dayMask & (1 << now.tm_wday)) != 0;
 }
 

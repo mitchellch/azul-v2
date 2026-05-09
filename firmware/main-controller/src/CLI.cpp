@@ -307,15 +307,7 @@ void CLI::cmdStatus() {
   uint32_t totalHeap = ESP.getHeapSize();
   uint32_t usedHeap  = totalHeap - freeHeap;
 
-  Serial.printf("Firmware:      %s\r\n", fwVersionFull().c_str());
-  Serial.printf("Uptime:        %lu seconds\r\n", millis() / 1000);
-  Serial.printf("Temperature:   %.1f C / %.1f F\r\n", tempC, tempC * 9.0f / 5.0f + 32.0f);
-  if (WiFi.isConnected()) {
-    Serial.printf("WiFi:          %s (%s)\r\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-  } else {
-    Serial.printf("WiFi:          disconnected\r\n");
-  }
-  Serial.printf("MAC:           %s\r\n", WiFi.macAddress().c_str());
+  // Date/Time
   if (_scheduler.isTimeSynced()) {
     struct tm t;
     if (_time.getLocalTime(t)) {
@@ -328,14 +320,19 @@ void CLI::cmdStatus() {
         Serial.printf("Date/Time:     %s %s\r\n", timeBuf, offset);
       }
     }
-    Serial.printf("NTP:           synced\r\n");
-  } else {
-    Serial.printf("NTP:           not synced\r\n");
   }
-  Serial.printf("RAM:           %lu used (%lu%%) / %lu total / %lu free (%lu%%)\r\n",
-                usedHeap, usedHeap * 100 / totalHeap,
-                totalHeap,
-                freeHeap, freeHeap * 100 / totalHeap);
+
+  Serial.printf("Firmware:      %s\r\n", fwVersionFull().c_str());
+
+  if (_time.hasLocation()) {
+    Serial.printf("Location:      %.5f, %.5f\r\n", _time.getLat(), _time.getLon());
+  } else {
+    Serial.printf("Location:      not set\r\n");
+  }
+
+  Serial.printf("MAC:           %s\r\n", WiFi.macAddress().c_str());
+
+  Serial.printf("NTP:           %s\r\n", _scheduler.isTimeSynced() ? "synced" : "not synced");
 
   nvs_stats_t nvsStats;
   if (nvs_get_stats(NULL, &nvsStats) == ESP_OK) {
@@ -347,16 +344,44 @@ void CLI::cmdStatus() {
                   nvsStats.free_entries,  freePct);
   }
 
+  Serial.printf("RAM:           %lu used (%lu%%) / %lu total / %lu free (%lu%%)\r\n",
+                usedHeap, usedHeap * 100 / totalHeap,
+                totalHeap,
+                freeHeap, freeHeap * 100 / totalHeap);
+
   const Schedule* active = _scheduler.getActiveSchedule();
   if (active && !_scheduler.isKeepaliveActive()) {
     Serial.printf("Schedule:      %s\r\n", active->name);
   } else if (_scheduler.isKeepaliveActive()) {
-    Serial.printf("Schedule:      none [keepalive active — data may be corrupt]\r\n");
+    Serial.printf("Schedule:      none [keepalive active]\r\n");
   } else {
-    Serial.printf("Schedule:      none (use POST /api/schedules to create one)\r\n");
+    Serial.printf("Schedule:      none\r\n");
   }
 
-  Serial.printf("Zones running: %s\r\n", _zones.isAnyZoneRunning() ? "yes" : "none");
+  Serial.printf("Temperature:   %.1f C / %.1f F\r\n", tempC, tempC * 9.0f / 5.0f + 32.0f);
+  Serial.printf("Uptime:        %lu seconds\r\n", millis() / 1000);
+
+  if (WiFi.isConnected()) {
+    Serial.printf("WiFi:          %s (%s)\r\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+  } else {
+    Serial.printf("WiFi:          disconnected\r\n");
+  }
+
+  if (_zones.isAnyZoneRunning()) {
+    char running[32] = {0};
+    for (uint8_t i = 1; i <= MAX_ZONES; i++) {
+      const Zone* z = _zones.getZone(i);
+      if (z && z->status == ZoneStatus::RUNNING) {
+        if (running[0]) strlcat(running, ", ", sizeof(running));
+        char buf[4];
+        snprintf(buf, sizeof(buf), "%d", i);
+        strlcat(running, buf, sizeof(running));
+      }
+    }
+    Serial.printf("Zones running: %s\r\n", running);
+  } else {
+    Serial.printf("Zones running: none\r\n");
+  }
 }
 
 void CLI::cmdVersion() {
@@ -495,18 +520,24 @@ void CLI::cmdSchedule() {
   Serial.printf("UUID:     %s\r\n", s->uuid);
   Serial.printf("Period:   %s to %s\r\n", startBuf, endBuf);
   Serial.println("Runs:");
-  Serial.println("  Zone  Days     Time   Duration");
-  Serial.println("  ----  -------  -----  --------");
+  Serial.println("  Zone  Days                  Time   Duration");
+  Serial.println("  ----  --------------------  -----  --------");
 
   static const char* dayNames[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
   for (uint8_t i = 0; i < s->runCount; i++) {
     const ScheduleRun& r = s->runs[i];
-    char days[24] = {0};
+    char days[21];
+    memset(days, ' ', 20);
+    days[20] = '\0';
     for (uint8_t d = 0; d < 7; d++) {
-      if (r.dayMask & (1 << d)) { strcat(days, dayNames[d]); strcat(days, " "); }
+      if (r.dayMask & (1 << d)) {
+        days[d * 3]     = dayNames[d][0];
+        days[d * 3 + 1] = dayNames[d][1];
+      }
     }
-    Serial.printf("  %-4d  %-7s  %02d:%02d  %ds\r\n",
-                  r.zoneId, days, r.hour, r.minute, r.durationSeconds);
+    Serial.printf("  %-4d  %-20s  %02d:%02d  %02d:%02d\r\n",
+                  r.zoneId, days, r.hour, r.minute,
+                  r.durationSeconds / 60, r.durationSeconds % 60);
   }
 }
 

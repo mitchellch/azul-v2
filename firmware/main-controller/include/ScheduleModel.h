@@ -21,13 +21,17 @@
 #define DAY_SAT  (1 << 6)
 #define DAY_ALL  0x7F
 
+// intervalDays: 0 or 1 = use dayMask; 2+ = fire every N days from startDate
+#define INTERVAL_DAILY 0
+
 struct ScheduleRun {
     uint8_t  zoneId;
     uint8_t  dayMask;
     uint8_t  hour;
     uint8_t  minute;
     uint16_t durationSeconds;
-    uint8_t  _pad[2];
+    uint8_t  intervalDays;
+    uint8_t  _pad;
 };
 static_assert(sizeof(ScheduleRun) == 8, "ScheduleRun must be 8 bytes");
 

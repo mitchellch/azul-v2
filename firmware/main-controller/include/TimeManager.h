@@ -37,12 +37,21 @@ public:
     // Convert days since epoch to ISO date string "YYYY-MM-DD" (buf must be ≥11)
     static void daysToIsoDate(uint32_t days, char* buf);
 
+    // GPS coordinates (set by mobile app sync, stored in NVS)
+    void  setLocation(float lat, float lon);
+    float getLat() const { return _lat; }
+    float getLon() const { return _lon; }
+    bool  hasLocation() const { return _hasLocation; }
+
 private:
     int32_t _tzOffset  = 0;
     int32_t _dstOffset = 0;
     char    _tzName[48] = "UTC";
     bool    _tzManual   = false;
     mutable bool _everSynced = false;
+    float   _lat = 0.0f;
+    float   _lon = 0.0f;
+    bool    _hasLocation = false;
 
     void loadFromNvs();
     void applyTz();

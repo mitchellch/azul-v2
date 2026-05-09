@@ -1,4 +1,5 @@
 #include "RestServer.h"
+#include "ScheduleJson.h"
 #include "version.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -139,68 +140,11 @@ void RestServer::registerRoutes() {
 // ---------------------------------------------------------------------------
 
 void RestServer::scheduleToJson(const Schedule& s, JsonObject& obj) const {
-  obj["uuid"] = s.uuid;
-  obj["name"] = s.name;
-  char dateBuf[11];
-  TimeManager::daysToIsoDate(s.startDate, dateBuf);
-  obj["start_date"] = dateBuf;
-  if (s.endDate == 0xFFFFFFFF) {
-    obj["end_date"] = nullptr;
-  } else {
-    TimeManager::daysToIsoDate(s.endDate, dateBuf);
-    obj["end_date"] = dateBuf;
-  }
-
-  JsonArray runs = obj["runs"].to<JsonArray>();
-  for (uint8_t i = 0; i < s.runCount; i++) {
-    const ScheduleRun& r = s.runs[i];
-    JsonObject ro = runs.add<JsonObject>();
-    ro["zone_id"]          = r.zoneId;
-    ro["day_mask"]         = r.dayMask;
-    ro["hour"]             = r.hour;
-    ro["minute"]           = r.minute;
-    ro["duration_seconds"] = r.durationSeconds;
-  }
+  ::scheduleToJson(s, obj);
 }
 
 bool RestServer::jsonToSchedule(const JsonVariant& body, Schedule& s, char* errOut) const {
-  memset(&s, 0, sizeof(s));
-
-  const char* name = body["name"] | "";
-  if (strlen(name) == 0) { strcpy(errOut, "name required"); return false; }
-  strlcpy(s.name, name, sizeof(s.name));
-
-  const char* startStr = body["start_date"] | "";
-  if (strlen(startStr) < 10) { strcpy(errOut, "start_date required (YYYY-MM-DD)"); return false; }
-  s.startDate = TimeManager::isoDateToDays(startStr);
-
-  const char* endStr = body["end_date"] | "";
-  s.endDate = (strlen(endStr) >= 10) ? TimeManager::isoDateToDays(endStr) : 0xFFFFFFFF;
-
-  if (s.endDate != 0xFFFFFFFF && s.endDate < s.startDate) {
-    strcpy(errOut, "end_date must be >= start_date");
-    return false;
-  }
-
-  JsonArrayConst runs = body["runs"];
-  if (runs.isNull()) { strcpy(errOut, "runs array required"); return false; }
-
-  s.runCount = 0;
-  for (JsonObjectConst r : runs) {
-    if (s.runCount >= MAX_RUNS_PER_SCHEDULE) { strcpy(errOut, "too many runs"); return false; }
-    ScheduleRun& sr = s.runs[s.runCount++];
-    sr.zoneId          = r["zone_id"]          | 0;
-    sr.dayMask         = r["day_mask"]          | DAY_ALL;
-    sr.hour            = r["hour"]              | 0;
-    sr.minute          = r["minute"]            | 0;
-    sr.durationSeconds = r["duration_seconds"]  | 300;
-    if (sr.zoneId < 1 || sr.zoneId > MAX_ZONES) {
-      snprintf(errOut, 64, "invalid zone_id: %d", sr.zoneId);
-      return false;
-    }
-  }
-
-  return true;
+  return ::jsonToSchedule(body, s, errOut, 64);
 }
 
 // ---------------------------------------------------------------------------
