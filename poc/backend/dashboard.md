@@ -28,7 +28,7 @@
 | **P4** | Audit log ingest + online/offline tracking | ✅ | P2 | [Details](P4-audit-online.md) |
 | **P5** | SSE real-time status stream | ✅ | P4 | [Details](P5-sse.md) |
 | **P6** | Remote zone control via cloud (mobile out-of-BLE-range) | ✅ | P2 | [Details](P6-remote-control.md) |
-| **P7** | Multi-tenant / landscaper org model | ⚪ | P3 | [Details](P7-multi-tenant.md) |
+| **P7** | Multi-tenant / landscaper org model | ✅ | P3 | [Details](P7-multi-tenant.md) |
 
 ---
 
