@@ -13,6 +13,7 @@
 #include "CLI.h"
 #include "ZoneLed.h"
 #include "ZoneQueue.h"
+#include "MqttManager.h"
 
 ZoneController zones;
 WiFiManager    wifiManager;
@@ -27,16 +28,20 @@ ClaimManager   claimMgr;
 BleServer      bleServer(zones, auditLog, zoneQueue, scheduler, claimMgr, timeManager);
 CLI            serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
 ZoneLed        zoneLed(zones);
+MqttManager    mqttManager(zones, zoneQueue, scheduler, timeManager, auditLog);
 
-#define BLE_NOTIFY_INTERVAL_MS   5000
-#define WIFI_CHECK_INTERVAL_MS  30000
-#define NTP_SYNC_INTERVAL_MS  3600000
+#define BLE_NOTIFY_INTERVAL_MS    5000
+#define WIFI_CHECK_INTERVAL_MS   30000
+#define NTP_SYNC_INTERVAL_MS   3600000
+#define MQTT_PUBLISH_INTERVAL_MS 60000
 
 unsigned long lastBleNotify  = 0;
 unsigned long lastWifiCheck  = 0;
 unsigned long lastNtpSync    = 0;
+unsigned long lastMqttStatus = 0;
 bool          restStarted    = false;
 bool          ntpStarted     = false;
+bool          mqttStarted    = false;
 
 void setup() {
   Serial.begin(115200);
@@ -66,6 +71,12 @@ void setup() {
   }
 
   bleServer.begin();
+
+  if (wifiManager.isConnected()) {
+    mqttManager.begin();
+    mqttStarted = true;
+  }
+
   serialCli.begin();
   zoneLed.begin();
 
@@ -81,10 +92,16 @@ void loop() {
   zoneLed.tick();
   serialCli.poll();
   bleServer.tick();
+  if (mqttStarted) mqttManager.tick();
 
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {
     bleServer.notifyStatus();
     lastBleNotify = now;
+  }
+
+  if (mqttStarted && (now - lastMqttStatus >= MQTT_PUBLISH_INTERVAL_MS)) {
+    mqttManager.publishStatus();
+    lastMqttStatus = now;
   }
 
   if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS) {
@@ -97,6 +114,10 @@ void loop() {
       if (!ntpStarted) {
         timeManager.begin();
         ntpStarted = true;
+      }
+      if (!mqttStarted) {
+        mqttManager.begin();
+        mqttStarted = true;
       }
     }
     lastWifiCheck = now;

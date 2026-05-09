@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
 import { mqttClient } from '../mqtt/client';
-import { assertDeviceOwner } from '../lib/deviceAccess';
+import { assertDeviceAccess } from '../lib/deviceAccess';
 import { sseRegistry } from '../lib/sseRegistry';
 import { HttpError } from '../middleware/errorHandler';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ devicesRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
 // GET /api/devices/:mac — get single device (must be owned by user)
 devicesRouter.get('/:mac', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
     const full   = await db.device.findUnique({
       where:   { mac: req.params.mac },
       include: { zones: { orderBy: { number: 'asc' } }, schedules: { include: { runs: true } } },
@@ -92,7 +92,7 @@ devicesRouter.post('/claim', async (req: Request, res: Response, next: NextFunct
 // PATCH /api/devices/:mac — update device name
 devicesRouter.patch('/:mac', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await assertDeviceOwner(req.params.mac, req.user!.id);
+    await assertDeviceAccess(req.params.mac, req.user!.id);
     const { name } = req.body;
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'name required');
     const device = await db.device.update({ where: { mac: req.params.mac }, data: { name: name.trim() } });
@@ -103,7 +103,7 @@ devicesRouter.patch('/:mac', async (req: Request, res: Response, next: NextFunct
 // DELETE /api/devices/:mac — unclaim device
 devicesRouter.delete('/:mac', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await assertDeviceOwner(req.params.mac, req.user!.id);
+    await assertDeviceAccess(req.params.mac, req.user!.id);
     await db.device.delete({ where: { mac: req.params.mac } });
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -112,7 +112,7 @@ devicesRouter.delete('/:mac', async (req: Request, res: Response, next: NextFunc
 // POST /api/devices/:mac/zones/:zoneNumber/start
 devicesRouter.post('/:mac/zones/:zoneNumber/start', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await assertDeviceOwner(req.params.mac, req.user!.id);
+    await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     const duration   = (req.body.duration as number) ?? 60;
     if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
@@ -124,7 +124,7 @@ devicesRouter.post('/:mac/zones/:zoneNumber/start', async (req: Request, res: Re
 // POST /api/devices/:mac/zones/:zoneNumber/stop
 devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await assertDeviceOwner(req.params.mac, req.user!.id);
+    await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     mqttClient.publish(req.params.mac, 'zone/stop', { zone: zoneNumber });
     res.json({ ok: true });
@@ -134,7 +134,7 @@ devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Res
 // GET /api/devices/:mac/stream — SSE real-time status
 devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
 
     res.setHeader('Content-Type',  'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -167,8 +167,50 @@ devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: Next
 // POST /api/devices/:mac/zones/stop-all
 devicesRouter.post('/:mac/zones/stop-all', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await assertDeviceOwner(req.params.mac, req.user!.id);
+    await assertDeviceAccess(req.params.mac, req.user!.id);
     mqttClient.publish(req.params.mac, 'zone/stop-all', {});
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+const AssignDeviceOrgSchema = z.object({ orgId: z.string().uuid() });
+
+// PUT /api/devices/:mac/org
+devicesRouter.put('/:mac/org', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const { mac } = req.params;
+
+    const body = AssignDeviceOrgSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten()));
+
+    const { orgId } = body.data;
+
+    const device = await db.device.findUnique({ where: { mac } });
+    if (!device) throw new HttpError(404, 'Device not found');
+    if (device.userId !== userId) throw new HttpError(403, 'Forbidden');
+
+    const member = await db.orgMember.findUnique({
+      where: { orgId_userId: { orgId, userId } },
+    });
+    if (!member) throw new HttpError(403, 'Not a member of that organization');
+
+    const updated = await db.device.update({ where: { mac }, data: { orgId } });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/devices/:mac/org
+devicesRouter.delete('/:mac/org', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const { mac } = req.params;
+
+    const device = await db.device.findUnique({ where: { mac } });
+    if (!device) throw new HttpError(404, 'Device not found');
+    if (device.userId !== userId) throw new HttpError(403, 'Forbidden');
+
+    const updated = await db.device.update({ where: { mac }, data: { orgId: null } });
+    res.json(updated);
   } catch (err) { next(err); }
 });

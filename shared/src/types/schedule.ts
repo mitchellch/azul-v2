@@ -1,21 +1,17 @@
-export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-
-export type ScheduleFrequency = 'daily' | 'every-other-day' | 'specific-days';
-
-export interface ScheduleRun {
+export type ScheduleRun = {
+  zone_id: number;
+  day_mask: number;
   hour: number;
   minute: number;
-  durationSeconds: number;
-}
+  duration_seconds: number;
+  interval_days?: number;
+};
 
-export interface Schedule {
-  id: string;
-  zoneId: string;
+export type Schedule = {
+  uuid: string;
   name: string;
-  enabled: boolean;
-  frequency: ScheduleFrequency;
-  days: DayOfWeek[];
+  start_date: string;
+  end_date: string | null;
+  active?: boolean;
   runs: ScheduleRun[];
-  createdAt: string;
-  updatedAt: string;
-}
+};

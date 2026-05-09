@@ -1,19 +1,36 @@
 # @azul/shared
 
-Shared TypeScript types and constants used by `mobile/` and `server/`.
+Shared TypeScript types consumed by `mobile/`, `server/`, and any future web client.
 
 ## Structure
 
 ```
 src/
   types/
-    controller.ts   Controller, ControllerType, ControllerStatus
-    zone.ts         Zone, ZoneStatus
-    schedule.ts     Schedule, ScheduleRun, DayOfWeek, ScheduleFrequency
-  index.ts          Re-exports all types
+    device.ts    AccountType, DeviceSummary
+    zone.ts      Zone, ZoneStatus, ZoneLiveState
+    schedule.ts  Schedule, ScheduleRun
+    audit.ts     AuditSource, AuditEntry
+    user.ts      User
+  index.ts       Re-exports all types
 ```
 
 ## Usage
 
-From `mobile/` or `server/`, reference this package as `@azul/shared`. Wire it up via
-a path alias in `tsconfig.json` or as a local workspace dependency.
+Install as a local workspace dependency or reference via a `tsconfig.json` path alias.
+
+```json
+// tsconfig.json
+{
+  "paths": {
+    "@azul/shared": ["../shared/src/index.ts"]
+  }
+}
+```
+
+## Build
+
+```bash
+npm install
+npm run build   # outputs to dist/
+```

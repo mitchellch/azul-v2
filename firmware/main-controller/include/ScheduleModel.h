@@ -53,7 +53,8 @@ enum class AuditSource : uint8_t {
     SCHEDULER = 0,
     MANUAL_REST = 1,
     MANUAL_BLE = 2,
-    MANUAL_CLI = 3
+    MANUAL_CLI = 3,
+    MANUAL_MQTT = 4
 };
 
 struct AuditEntry {

@@ -5,6 +5,7 @@ import { devicesRouter } from './handlers/devices';
 import { zonesRouter } from './handlers/zones';
 import { logsRouter } from './handlers/logs';
 import { schedulesRouter } from './handlers/schedules';
+import { orgsRouter } from './handlers/orgs';
 
 export const router = Router();
 
@@ -16,3 +17,4 @@ router.use('/devices', devicesRouter);
 router.use('/devices', zonesRouter);
 router.use('/devices', logsRouter);
 router.use('/devices/:mac/schedules', schedulesRouter);
+router.use('/orgs', orgsRouter);

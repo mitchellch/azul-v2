@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <functional>
 #include "ZoneController.h"
 #include "AuditLog.h"
 
@@ -35,6 +36,10 @@ public:
 
     // Call from main loop — starts next queued zone when current finishes.
     void tick();
+
+    // Optional callback: called when a zone transitions from queued → running.
+    // Args: zoneId, durationSeconds, source (AuditSource)
+    std::function<void(uint8_t, uint16_t, uint8_t)> onZoneStart;
 
     uint8_t count() const { return _count; }
     bool    isEmpty() const { return _count == 0; }

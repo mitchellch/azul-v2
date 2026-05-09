@@ -1,11 +1,13 @@
-export type ZoneStatus = 'idle' | 'running' | 'error';
-
-export interface Zone {
+export type Zone = {
   id: string;
-  controllerId: string;
+  deviceId: string;
+  number: number;
   name: string;
+};
+
+export type ZoneStatus = 'idle' | 'running' | 'pending';
+
+export type ZoneLiveState = Zone & {
   status: ZoneStatus;
-  runtimeSeconds: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
+  runtimeSeconds: number;
+};

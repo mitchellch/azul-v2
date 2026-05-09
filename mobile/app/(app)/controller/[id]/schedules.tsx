@@ -4,6 +4,7 @@ import {
   ActivityIndicator, StyleSheet, Alert, ScrollView, Switch,
   Modal, FlatList as FList,
 } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Slider from '@react-native-community/slider';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Stack } from 'expo-router';
@@ -52,7 +53,7 @@ export default function SchedulesScreen() {
   const [schedules, setSchedules]   = useState<Schedule[]>([]);
   const [activeUuid, setActiveUuid] = useState<string | null>(null);
   const [editing, setEditing]       = useState<Schedule | null>(null);
-  const [longPressUuid, setLongPressUuid] = useState<string | null>(null);
+  const swipeRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
   useEffect(() => { if (connected) loadWithRetry(); }, [connected]);
 
@@ -154,45 +155,49 @@ export default function SchedulesScreen() {
           data={schedules}
           keyExtractor={s => s.uuid!}
           contentContainerStyle={{ paddingBottom: 32 }}
-          onScrollBeginDrag={() => setLongPressUuid(null)}
           renderItem={({ item: s }) => {
-            const isActive   = s.uuid === activeUuid;
-            const showDelete = longPressUuid === s.uuid;
-            return (
+            const isActive = s.uuid === activeUuid;
+
+            const renderRightActions = () => (
               <TouchableOpacity
-                style={[styles.card, showDelete && styles.cardDeleteMode]}
+                style={styles.swipeDeleteBtn}
                 onPress={() => {
-                  if (longPressUuid) { setLongPressUuid(null); return; }
-                  setEditing(s);
+                  swipeRefs.current.get(s.uuid!)?.close();
+                  handleDelete(s.uuid!);
                 }}
-                onLongPress={() => setLongPressUuid(s.uuid!)}
-                delayLongPress={500}
-                activeOpacity={0.85}
               >
-                <View style={styles.cardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.scheduleName}>{s.name}</Text>
-                    <Text style={styles.scheduleDates}>
-                      {formatDate(s.start_date)} → {s.end_date ? formatDate(s.end_date) : 'open-ended'}
-                    </Text>
-                    <Text style={styles.scheduleRuns}>{s.runs.length} zone{s.runs.length !== 1 ? 's' : ''} scheduled</Text>
-                  </View>
-                  {showDelete ? (
-                    <TouchableOpacity
-                      style={styles.cardDeleteBtn}
-                      onPress={() => { setLongPressUuid(null); handleDelete(s.uuid!); }}
-                    >
-                      <Text style={styles.cardDeleteBtnText}>🗑 Delete</Text>
-                    </TouchableOpacity>
-                  ) : (
+                <Text style={styles.swipeDeleteText}>🗑{'\n'}Delete</Text>
+              </TouchableOpacity>
+            );
+
+            return (
+              <Swipeable
+                ref={ref => { swipeRefs.current.set(s.uuid!, ref); }}
+                renderRightActions={renderRightActions}
+                rightThreshold={60}
+                overshootRight={false}
+              >
+                <TouchableOpacity
+                  style={styles.card}
+                  onPress={() => setEditing(s)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.cardHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.scheduleName}>{s.name}</Text>
+                      <Text style={styles.scheduleDates}>
+                        {formatDate(s.start_date)} → {s.end_date ? formatDate(s.end_date) : 'open-ended'}
+                      </Text>
+                      <Text style={styles.scheduleRuns}>{s.runs.length} zone{s.runs.length !== 1 ? 's' : ''} scheduled</Text>
+                    </View>
                     <Switch
                       value={isActive}
                       onValueChange={() => handleActivate(s.uuid!)}
                       trackColor={{ true: '#1a56db' }}
                     />
-                  )}
-                </View>
-              </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Swipeable>
             );
           }}
         />
@@ -667,10 +672,9 @@ const styles = StyleSheet.create({
   addFirstBtn:      { backgroundColor: '#1a56db', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 28 },
   addFirstBtnText:  { color: '#fff', fontWeight: '600', fontSize: 15 },
   card:             { backgroundColor: '#fff', marginHorizontal: 16, marginTop: 10, borderRadius: 10, padding: 14, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  cardDeleteMode:   { borderWidth: 1, borderColor: '#fecaca' },
-  cardDeleteBtn:    { backgroundColor: '#fef2f2', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, alignSelf: 'center' },
-  cardDeleteBtnText:{ color: '#dc2626', fontWeight: '600', fontSize: 13 },
   cardHeader:       { flexDirection: 'row', alignItems: 'center' },
+  swipeDeleteBtn:   { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 80, marginHorizontal: 16, marginTop: 10, borderRadius: 10 },
+  swipeDeleteText:  { color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' },
   scheduleName:     { fontSize: 16, fontWeight: '600', color: '#111827' },
   scheduleDates:    { fontSize: 12, color: '#6b7280', marginTop: 2 },
   scheduleRuns:     { fontSize: 12, color: '#9ca3af', marginTop: 1 },

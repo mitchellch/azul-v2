@@ -19,9 +19,41 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  devices   Device[]
+  devices        Device[]
+  orgsOwned      Organization[] @relation("OrgOwner")
+  orgMemberships OrgMember[]
 
   @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Organizations
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner   User        @relation("OrgOwner", fields: [ownerId], references: [id])
+  members OrgMember[]
+  devices Device[]
+
+  @@map("organizations")
+}
+
+model OrgMember {
+  orgId  String @map("org_id")
+  userId String @map("user_id")
+  role   String // "admin" | "member"
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id])
+
+  @@id([orgId, userId])
+  @@map("org_members")
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +74,7 @@ model PendingDevice {
 model Device {
   id         String    @id @default(uuid())
   userId     String    @map("user_id")
+  orgId      String?   @map("org_id")
   mac        String    @unique
   name       String    @default("Azul Controller")
   firmware   String?
@@ -50,10 +83,11 @@ model Device {
   lastSeenAt DateTime? @map("last_seen_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  user       User       @relation(fields: [userId], references: [id])
-  zones      Zone[]
-  schedules  Schedule[]
-  auditLog   AuditLog[]
+  user         User          @relation(fields: [userId], references: [id])
+  org          Organization? @relation(fields: [orgId], references: [id])
+  zones        Zone[]
+  schedules    Schedule[]
+  auditLog     AuditLog[]
 
   @@map("devices")
 }

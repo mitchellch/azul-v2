@@ -1,13 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
-import { assertDeviceOwner } from '../lib/deviceAccess';
+import { assertDeviceAccess } from '../lib/deviceAccess';
 
 export const logsRouter = Router();
 
 // GET /api/devices/:mac/log?limit=50&offset=0
 logsRouter.get('/:mac/log', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
     const limit  = Math.min(parseInt((req.query.limit  as string) ?? '50'),  256);
     const offset = parseInt((req.query.offset as string) ?? '0');
 

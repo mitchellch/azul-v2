@@ -73,6 +73,7 @@ void ZoneQueue::tick() {
         _audit.append(entry.zoneId, entry.durationSeconds, (AuditSource)entry.source);
         Logger::log("[Queue] Starting zone %d (%ds) — %d remaining",
                     entry.zoneId, entry.durationSeconds, _count);
+        if (onZoneStart) onZoneStart(entry.zoneId, entry.durationSeconds, entry.source);
     }
 }
 
