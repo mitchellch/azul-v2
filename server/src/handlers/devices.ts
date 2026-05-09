@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
 import { mqttClient } from '../mqtt/client';
 import { assertDeviceOwner } from '../lib/deviceAccess';
+import { sseRegistry } from '../lib/sseRegistry';
 import { HttpError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -127,6 +128,39 @@ devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Res
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     mqttClient.publish(req.params.mac, 'zone/stop', { zone: zoneNumber });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/:mac/stream — SSE real-time status
+devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if proxied
+    res.flushHeaders();
+
+    // Send current snapshot immediately
+    const full = await db.device.findUnique({
+      where:   { mac: req.params.mac },
+      include: { zones: { orderBy: { number: 'asc' } } },
+    });
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', device: full })}\n\n`);
+
+    // Subscribe to live updates
+    const unsubscribe = sseRegistry.subscribe(req.params.mac, (event) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+
+    // Send a heartbeat every 30s to keep the connection alive through proxies
+    const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 30_000);
+
+    req.on('close', () => {
+      unsubscribe();
+      clearInterval(heartbeat);
+    });
   } catch (err) { next(err); }
 });
 

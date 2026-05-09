@@ -26,7 +26,7 @@
 | **P2** | Device claiming — POST /api/devices/claim, ownership scoping | ✅ | P1 | [Details](P2-claiming.md) |
 | **P3** | Schedule CRUD — full lifecycle + MQTT push to device | ✅ | P2 | [Details](P3-schedules.md) |
 | **P4** | Audit log ingest + online/offline tracking | ✅ | P2 | [Details](P4-audit-online.md) |
-| **P5** | SSE real-time status stream | ⚪ | P4 | [Details](P5-sse.md) |
+| **P5** | SSE real-time status stream | ✅ | P4 | [Details](P5-sse.md) |
 | **P6** | Remote zone control via cloud (mobile out-of-BLE-range) | ✅ | P2 | [Details](P6-remote-control.md) |
 | **P7** | Multi-tenant / landscaper org model | ⚪ | P3 | [Details](P7-multi-tenant.md) |
 

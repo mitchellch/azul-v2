@@ -1,4 +1,5 @@
 import { db } from '../db/client';
+import { sseRegistry } from '../lib/sseRegistry';
 
 // Called when a device publishes to azul/{mac}/status
 export async function handleDeviceStatus(mac: string, data: Record<string, unknown>) {
@@ -12,6 +13,8 @@ export async function handleDeviceStatus(mac: string, data: Record<string, unkno
       where: { mac },
       data:  { firmware, ipAddress, online: true, lastSeenAt: now },
     });
+    // Forward to any connected SSE clients for this device
+    sseRegistry.emit(mac, { type: 'status', ...data, online: true, lastSeenAt: now });
   } catch (err: any) {
     if (err.code === 'P2025') {
       // Device not claimed yet — track in pending_devices
