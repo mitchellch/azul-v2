@@ -7,6 +7,7 @@
 - [Extender v2.1 Spec](design/extender-v2-spec.md) — LiFePO4 / zero-maintenance revision
 - [Cloud API Architecture](design/cloud-api-architecture.md) — backend services, API, MQTT protocol, multi-tenant model
 - [Web App Architecture](design/web-app-architecture.md) — Next.js web app, landscaper portal, BFF pattern
+- [BLE Mobile Protocol](design/ble-mobile-protocol.md) — BLE GATT service, command/response framing, chunked transfer
 - [Firmware Architecture](design/firmware-architecture.md) — ESP32 firmware structure
 - [OTA Firmware Update Architecture](design/ota-firmware-update-architecture.md) — over-the-air update strategy
 - [Security & Authentication](design/security-and-authentication.md) — auth, provisioning, and ESP32 security features
