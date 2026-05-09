@@ -205,14 +205,92 @@ audit_log      id, device_id, zone_id, started_at, duration_sec, source
 
 ---
 
-## 7. Implementation Order
+## 7. Multi-Tenant Architecture (Landscaper Support)
 
-When ready to start the backend:
+Azul supports two personas beyond the basic homeowner:
 
-1. Set up Terraform with dev stack (Neon + HiveMQ + Lambda skeleton)
-2. Basic device registration and status persistence
-3. Zone control via MQTT (cloud → device commands)
-4. Schedule sync (cloud pushes schedules to device on connect)
-5. Auth0 integration for mobile app backend calls
-6. Audit log aggregation
-7. Switch to prod stack (RDS + IoT Core) when approaching launch
+- **Landscaper** — manages irrigation for multiple client properties
+- **Customer** — a homeowner whose system is managed by a landscaper
+
+### 7.1. Account Model
+
+```
+Account types (stored on users table):
+  owner       Standard homeowner. Sees only their own controllers.
+  landscaper  Sees their own controllers + all client controllers.
+  customer    Sees their own controllers. May be linked to a landscaper.
+```
+
+### 7.2. Relationship Model
+
+```
+organizations   id, name, owner_id (landscaper's user_id)
+org_members     org_id, user_id, role (admin | member)
+devices         id, owner_user_id, org_id (nullable)
+```
+
+A device owned by a customer can be associated with a landscaper's `org_id`, granting the landscaper full management access. The customer retains ownership and can see/revoke access.
+
+### 7.3. Auth0 Organizations
+
+Auth0 supports native Organizations — each landscaper business maps to one Auth0 Org. Customers are members of that org. This gives:
+- SSO within a landscaper's customer portal
+- Per-org branding (logo, colors) for white-label
+- Role claims in JWTs (`org_id`, `role`)
+
+### 7.4. API Authorization Rules
+
+| Actor | Can access |
+|---|---|
+| Owner | Their own devices |
+| Customer | Their own devices |
+| Landscaper (org admin) | All devices in their org |
+| Landscaper member | Devices in their org, read-only |
+
+All enforcement happens in Lambda authorizers — no client-side trust.
+
+---
+
+## 8. Communication Architecture
+
+The backend acts as a **command bus** between web/mobile clients and controllers. BLE (direct) and cloud (via MQTT) are parallel paths:
+
+```
+Web App  ──HTTPS──▶ API Gateway ──MQTT publish──▶ Controller
+Mobile   ──BLE (direct, in range)───────────────▶ Controller
+Mobile   ──HTTPS──▶ API Gateway ──MQTT publish──▶ Controller (remote)
+```
+
+**Key principle:** The controller is the source of truth. The backend syncs state from the controller (via MQTT status messages) and writes commands to it (via MQTT command topics). The backend never assumes a command succeeded — it waits for the controller to publish a confirming status update.
+
+### 8.1. Controller Cloud Registration
+
+When a controller first gets WiFi credentials (via BLE `set_wifi`), it should:
+1. Connect to MQTT broker using a pre-provisioned device certificate or rotating API key
+2. Publish `azul/{mac}/online` with firmware version and capabilities
+3. Subscribe to `azul/{mac}/cmd/#`
+4. Begin periodic `azul/{mac}/status` heartbeats (60s)
+
+The backend persists the last-seen status and marks the device offline if no heartbeat for 5 minutes.
+
+---
+
+## 9. Web Application
+
+See [web-app-architecture.md](web-app-architecture.md) for full detail.
+
+**Summary:** A Next.js app hosted on Vercel (or AWS Amplify) that mirrors the mobile app's functionality. Auth0 for login. Communicates exclusively through the backend API — no direct BLE or device access.
+
+---
+
+## 10. Implementation Order (Updated)
+
+1. **Dev infrastructure** — Terraform with Neon + HiveMQ + Lambda skeleton
+2. **Device registration** — controller publishes online/status via MQTT; backend persists
+3. **Zone control** — cloud → device MQTT commands; backend confirms via status update
+4. **Schedule sync** — backend pushes schedules to device on connect and on change
+5. **Auth0 integration** — JWT validation, user record creation on first login
+6. **Audit log** — controller publishes events; backend aggregates
+7. **Multi-tenant** — org model, landscaper/customer roles, Auth0 Organizations
+8. **Web app** — Next.js frontend consuming the backend API
+9. **Prod infrastructure** — RDS + IoT Core when approaching launch
