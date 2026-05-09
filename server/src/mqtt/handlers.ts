@@ -2,30 +2,61 @@ import { db } from '../db/client';
 
 // Called when a device publishes to azul/{mac}/status
 export async function handleDeviceStatus(mac: string, data: Record<string, unknown>) {
+  const firmware  = data.firmware  as string | undefined;
+  const ipAddress = data.ip        as string | undefined;
+  const now       = new Date();
+
   try {
-    // Upsert device — creates it if first time seen
-    await db.device.upsert({
-      where:  { mac },
-      update: {
-        firmware:   (data.firmware  as string) ?? undefined,
-        ipAddress:  (data.ip        as string) ?? undefined,
-        lastSeenAt: new Date(),
-      },
-      create: {
-        mac,
-        name:       `Azul Controller (${mac.slice(-8)})`,
-        firmware:   (data.firmware as string) ?? undefined,
-        ipAddress:  (data.ip       as string) ?? undefined,
-        lastSeenAt: new Date(),
-        // No userId — device is unregistered until a user claims it
-        user: { connect: { id: 'UNREGISTERED' } },
+    // Try to update an existing claimed device first
+    await db.device.update({
+      where: { mac },
+      data:  { firmware, ipAddress, online: true, lastSeenAt: now },
+    });
+  } catch (err: any) {
+    if (err.code === 'P2025') {
+      // Device not claimed yet — track in pending_devices
+      await db.pendingDevice.upsert({
+        where:  { mac },
+        update: { firmware, ipAddress },
+        create: { mac, firmware, ipAddress },
+      });
+    } else {
+      console.error('[MQTT] handleDeviceStatus error:', err.message);
+    }
+  }
+}
+
+// Called when a device publishes to azul/{mac}/events
+export async function handleDeviceEvent(mac: string, data: Record<string, unknown>) {
+  if (data.type !== 'zone_run') return;
+
+  const zoneNumber      = data.zone     as number;
+  const durationSeconds = data.duration as number;
+  const source          = (data.source  as string) ?? 'scheduler';
+  const ts              = data.ts ? new Date((data.ts as number) * 1000) : new Date();
+
+  try {
+    const device = await db.device.findUnique({ where: { mac } });
+    if (!device) return; // Unclaimed device — skip
+
+    // Upsert zone (firmware may know zones the backend hasn't seen)
+    const zone = await db.zone.upsert({
+      where:  { deviceId_number: { deviceId: device.id, number: zoneNumber } },
+      update: {},
+      create: { deviceId: device.id, number: zoneNumber },
+    });
+
+    await db.auditLog.create({
+      data: {
+        deviceId:        device.id,
+        zoneId:          zone.id,
+        zoneNumber,
+        startedAt:       ts,
+        durationSeconds,
+        source,
       },
     });
-  } catch (err: unknown) {
-    // Device may not be registered yet — log but don't crash
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.includes('UNREGISTERED')) {
-      console.error('[MQTT] handleDeviceStatus error:', msg);
-    }
+  } catch (err: any) {
+    console.error('[MQTT] handleDeviceEvent error:', err.message);
   }
 }

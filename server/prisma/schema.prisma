@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
 model User {
   id        String   @id @default(uuid())
   auth0Sub  String   @unique @map("auth0_sub")
@@ -20,6 +24,21 @@ model User {
   @@map("users")
 }
 
+// ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
+
+// Devices that have published MQTT status but haven't been claimed by a user yet
+model PendingDevice {
+  mac         String   @id
+  firmware    String?
+  ipAddress   String?  @map("ip_address")
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @updatedAt @map("last_seen_at")
+
+  @@map("pending_devices")
+}
+
 model Device {
   id         String    @id @default(uuid())
   userId     String    @map("user_id")
@@ -27,15 +46,21 @@ model Device {
   name       String    @default("Azul Controller")
   firmware   String?
   ipAddress  String?   @map("ip_address")
+  online     Boolean   @default(false)
   lastSeenAt DateTime? @map("last_seen_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
   user       User       @relation(fields: [userId], references: [id])
   zones      Zone[]
+  schedules  Schedule[]
   auditLog   AuditLog[]
 
   @@map("devices")
 }
+
+// ---------------------------------------------------------------------------
+// Zones
+// ---------------------------------------------------------------------------
 
 model Zone {
   id       String @id @default(uuid())
@@ -43,12 +68,55 @@ model Zone {
   number   Int
   name     String @default("")
 
-  device   Device     @relation(fields: [deviceId], references: [id])
-  auditLog AuditLog[]
+  device       Device        @relation(fields: [deviceId], references: [id])
+  auditLog     AuditLog[]
+  scheduleRuns ScheduleRun[]
 
   @@unique([deviceId, number])
   @@map("zones")
 }
+
+// ---------------------------------------------------------------------------
+// Schedules
+// ---------------------------------------------------------------------------
+
+model Schedule {
+  id        String   @id @default(uuid())
+  deviceId  String   @map("device_id")
+  uuid      String   @unique         // UUID assigned by controller firmware
+  name      String
+  startDate String   @map("start_date")   // "YYYY-MM-DD"
+  endDate   String?  @map("end_date")
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  device Device        @relation(fields: [deviceId], references: [id])
+  runs   ScheduleRun[]
+
+  @@map("schedules")
+}
+
+model ScheduleRun {
+  id              String  @id @default(uuid())
+  scheduleId      String  @map("schedule_id")
+  zoneId          String? @map("zone_id")
+  zoneNumber      Int     @map("zone_number")
+  dayMask         Int     @map("day_mask")
+  hour            Int
+  minute          Int
+  durationSeconds Int     @map("duration_seconds")
+  intervalDays    Int     @default(1) @map("interval_days")
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  zone     Zone?    @relation(fields: [zoneId], references: [id])
+
+  @@map("schedule_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
 
 model AuditLog {
   id              String   @id @default(uuid())
@@ -59,8 +127,8 @@ model AuditLog {
   durationSeconds Int      @map("duration_seconds")
   source          String   // "scheduler" | "manual_rest" | "manual_ble" | "manual_cli"
 
-  device Device  @relation(fields: [deviceId], references: [id])
-  zone   Zone?   @relation(fields: [zoneId], references: [id])
+  device Device @relation(fields: [deviceId], references: [id])
+  zone   Zone?  @relation(fields: [zoneId], references: [id])
 
   @@map("audit_log")
 }

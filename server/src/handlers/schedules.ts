@@ -1,0 +1,185 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
+import { db } from '../db/client';
+import { mqttClient } from '../mqtt/client';
+import { assertDeviceOwner } from '../lib/deviceAccess';
+import { toPayload } from '../lib/scheduleSerializer';
+import { HttpError } from '../middleware/errorHandler';
+import { z } from 'zod';
+
+export const schedulesRouter = Router({ mergeParams: true });
+
+const RunSchema = z.object({
+  zone_id:          z.number().int().min(1).max(8),
+  day_mask:         z.number().int().min(0).max(127),
+  hour:             z.number().int().min(0).max(23),
+  minute:           z.number().int().min(0).max(59),
+  duration_seconds: z.number().int().min(1),
+  interval_days:    z.number().int().min(1).optional(),
+});
+
+const ScheduleSchema = z.object({
+  name:       z.string().min(1),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end_date:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  runs:       z.array(RunSchema).min(1),
+});
+
+async function getFullSchedule(uuid: string) {
+  return db.schedule.findUnique({ where: { uuid }, include: { runs: true } });
+}
+
+// GET /api/devices/:mac/schedules
+schedulesRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const schedules = await db.schedule.findMany({
+      where:   { deviceId: device.id },
+      include: { runs: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(schedules.map(toPayload));
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/:mac/schedules/active
+schedulesRouter.get('/active', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const schedule = await db.schedule.findFirst({
+      where:   { deviceId: device.id, active: true },
+      include: { runs: true },
+    });
+    if (!schedule) return res.status(404).json({ error: 'No active schedule' });
+    return res.json(toPayload(schedule));
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/:mac/schedules/:uuid
+schedulesRouter.get('/:uuid', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const schedule = await db.schedule.findFirst({
+      where:   { uuid: req.params.uuid, deviceId: device.id },
+      include: { runs: true },
+    });
+    if (!schedule) throw new HttpError(404, 'Schedule not found');
+    res.json(toPayload(schedule));
+  } catch (err) { next(err); }
+});
+
+// POST /api/devices/:mac/schedules
+schedulesRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const body = ScheduleSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten()));
+
+    const uuid = randomUUID();
+    const { name, start_date, end_date, runs } = body.data;
+
+    const schedule = await db.schedule.create({
+      data: {
+        deviceId:  device.id,
+        uuid,
+        name,
+        startDate: start_date,
+        endDate:   end_date ?? null,
+        runs: {
+          create: runs.map(r => ({
+            zoneNumber:      r.zone_id,
+            dayMask:         r.day_mask,
+            hour:            r.hour,
+            minute:          r.minute,
+            durationSeconds: r.duration_seconds,
+            intervalDays:    r.interval_days ?? 1,
+          })),
+        },
+      },
+      include: { runs: true },
+    });
+
+    mqttClient.publish(req.params.mac, 'schedule/set', toPayload(schedule));
+    res.status(201).json(toPayload(schedule));
+  } catch (err) { next(err); }
+});
+
+// PUT /api/devices/:mac/schedules/:uuid
+schedulesRouter.put('/:uuid', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const body = ScheduleSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten()));
+
+    const existing = await db.schedule.findFirst({ where: { uuid: req.params.uuid, deviceId: device.id } });
+    if (!existing) throw new HttpError(404, 'Schedule not found');
+
+    const { name, start_date, end_date, runs } = body.data;
+
+    // Recreate runs (simpler than diffing)
+    await db.scheduleRun.deleteMany({ where: { scheduleId: existing.id } });
+    const schedule = await db.schedule.update({
+      where: { id: existing.id },
+      data: {
+        name,
+        startDate: start_date,
+        endDate:   end_date ?? null,
+        runs: {
+          create: runs.map(r => ({
+            zoneNumber:      r.zone_id,
+            dayMask:         r.day_mask,
+            hour:            r.hour,
+            minute:          r.minute,
+            durationSeconds: r.duration_seconds,
+            intervalDays:    r.interval_days ?? 1,
+          })),
+        },
+      },
+      include: { runs: true },
+    });
+
+    mqttClient.publish(req.params.mac, 'schedule/set', toPayload(schedule));
+    res.json(toPayload(schedule));
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/devices/:mac/schedules/:uuid
+schedulesRouter.delete('/:uuid', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const existing = await db.schedule.findFirst({ where: { uuid: req.params.uuid, deviceId: device.id } });
+    if (!existing) throw new HttpError(404, 'Schedule not found');
+
+    await db.schedule.delete({ where: { id: existing.id } });
+    mqttClient.publish(req.params.mac, 'schedule/delete', { uuid: req.params.uuid });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/devices/:mac/schedules/:uuid/activate
+schedulesRouter.post('/:uuid/activate', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const target = await db.schedule.findFirst({ where: { uuid: req.params.uuid, deviceId: device.id } });
+    if (!target) throw new HttpError(404, 'Schedule not found');
+
+    // Deactivate all others, activate this one
+    await db.$transaction([
+      db.schedule.updateMany({ where: { deviceId: device.id }, data: { active: false } }),
+      db.schedule.update({ where: { id: target.id }, data: { active: true } }),
+    ]);
+
+    mqttClient.publish(req.params.mac, 'schedule/activate', { uuid: req.params.uuid });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/devices/:mac/schedules/active  (deactivate)
+schedulesRouter.delete('/active', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    await db.schedule.updateMany({ where: { deviceId: device.id, active: true }, data: { active: false } });
+    mqttClient.publish(req.params.mac, 'schedule/deactivate', {});
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});

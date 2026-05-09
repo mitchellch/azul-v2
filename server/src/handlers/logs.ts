@@ -1,18 +1,23 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
+import { assertDeviceOwner } from '../lib/deviceAccess';
 
 export const logsRouter = Router();
 
-// GET /api/devices/:mac/log
-logsRouter.get('/:mac/log', async (req: Request, res: Response) => {
-  const device = await db.device.findUnique({ where: { mac: req.params.mac } });
-  if (!device) return res.status(404).json({ error: 'Device not found' });
+// GET /api/devices/:mac/log?limit=50&offset=0
+logsRouter.get('/:mac/log', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceOwner(req.params.mac, req.user!.id);
+    const limit  = Math.min(parseInt((req.query.limit  as string) ?? '50'),  256);
+    const offset = parseInt((req.query.offset as string) ?? '0');
 
-  const limit = parseInt((req.query.limit as string) ?? '50');
-  const logs = await db.auditLog.findMany({
-    where:   { deviceId: device.id },
-    orderBy: { startedAt: 'desc' },
-    take:    limit,
-  });
-  return res.json(logs);
+    const logs = await db.auditLog.findMany({
+      where:   { deviceId: device.id },
+      orderBy: { startedAt: 'desc' },
+      take:    limit,
+      skip:    offset,
+      include: { zone: { select: { number: true, name: true } } },
+    });
+    res.json(logs);
+  } catch (err) { next(err); }
 });

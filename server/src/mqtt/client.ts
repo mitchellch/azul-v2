@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { handleDeviceStatus } from './handlers';
+import { handleDeviceStatus, handleDeviceEvent } from './handlers';
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 
@@ -25,7 +25,8 @@ class MqttClient {
 
       try {
         const data = JSON.parse(payload.toString());
-        if (msgType === 'status') handleDeviceStatus(mac, data);
+        if      (msgType === 'status') handleDeviceStatus(mac, data);
+        else if (msgType === 'events') handleDeviceEvent(mac, data);
       } catch {
         console.error(`[MQTT] Failed to parse message on ${topic}`);
       }
