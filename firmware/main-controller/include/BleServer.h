@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <functional>
 #include "ZoneController.h"
 #include "Scheduler.h"
 #include "AuditLog.h"
@@ -38,6 +39,9 @@ public:
 
   // Called by BleCommandCallback from NimBLE task — only enqueues, never notifies
   void enqueueCommand(const char* data, uint16_t len);
+
+  // Optional callback: fired after any BLE schedule mutation so MQTT can re-publish immediately
+  std::function<void()> onScheduleChanged;
 
 private:
   ZoneController& _zones;

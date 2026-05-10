@@ -72,6 +72,11 @@ void setup() {
 
   bleServer.begin();
 
+  // Publish schedules immediately whenever a BLE schedule change is made
+  bleServer.onScheduleChanged = []() {
+    if (mqttStarted) mqttManager.publishSchedules();
+  };
+
   if (wifiManager.isConnected()) {
     mqttManager.begin();
     mqttStarted = true;

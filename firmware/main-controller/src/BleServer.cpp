@@ -420,6 +420,7 @@ void BleServer::handleCreateSchedule(const char* id, const JsonVariant& data) {
   if (!jsonToSchedule(data, s, errMsg)) { sendError(id, errMsg); return; }
   auto result = _scheduler.createSchedule(s);
   if (!result.ok) { sendError(id, result.message); return; }
+  if (onScheduleChanged) onScheduleChanged();
   String resp = "{\"uuid\":\""; resp += s.uuid; resp += "\"}";
   sendPayload(id, resp);
 }
@@ -433,6 +434,7 @@ void BleServer::handleUpdateSchedule(const char* id, const JsonVariant& data) {
   strlcpy(s.uuid, uuid, sizeof(s.uuid));
   auto result = _scheduler.updateSchedule(s);
   if (!result.ok) { sendError(id, result.message); return; }
+  if (onScheduleChanged) onScheduleChanged();
   sendOk(id);
 }
 
@@ -441,6 +443,7 @@ void BleServer::handleDeleteSchedule(const char* id, const JsonVariant& data) {
   if (!uuid[0]) { sendError(id, "uuid required"); return; }
   auto result = _scheduler.deleteSchedule(uuid);
   if (!result.ok) { sendError(id, result.message); return; }
+  if (onScheduleChanged) onScheduleChanged();
   sendOk(id);
 }
 
@@ -449,11 +452,13 @@ void BleServer::handleActivateSchedule(const char* id, const JsonVariant& data) 
   if (!uuid[0]) { sendError(id, "uuid required"); return; }
   auto result = _scheduler.activateSchedule(uuid);
   if (!result.ok) { sendError(id, result.message); return; }
+  if (onScheduleChanged) onScheduleChanged();
   sendOk(id);
 }
 
 void BleServer::handleDeactivateSchedule(const char* id) {
   _scheduler.deactivate();
+  if (onScheduleChanged) onScheduleChanged();
   sendOk(id);
 }
 
