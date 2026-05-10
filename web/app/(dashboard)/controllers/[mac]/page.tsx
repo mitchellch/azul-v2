@@ -278,13 +278,6 @@ export default function ControllerPage() {
             />
           ) : (
             <>
-              {/* Intro */}
-              <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 mb-5 text-sm text-blue-900 space-y-1.5">
-                <p className="font-semibold">About Schedules</p>
-                <p>A schedule defines when your zones run automatically. You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each.</p>
-                <p>Only one schedule is active at a time. Schedules must not have overlapping date ranges — the controller will reject overlaps.</p>
-                <p>Common use: one schedule for summer, one for winter, one for a specific season or event.</p>
-              </div>
               <div className="flex justify-end mb-4">
                 <button onClick={() => setEditingSchedule('new')}
                   disabled={schedules.length >= 5}
@@ -333,6 +326,14 @@ export default function ControllerPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Info — below the list */}
+              <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
+                <p className="font-semibold">About Schedules</p>
+                <p>A schedule defines when your zones run automatically during the week. Each schedule runs for a period of time defined by a start and end date — or you can set it to repeat every year between those same dates.</p>
+                <p>You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each. Only one schedule is active at a time.</p>
+                <p>Schedules must not have overlapping date ranges — the controller will reject overlaps. Common use: one schedule for summer, one for winter, one for a specific season or event.</p>
               </div>
             </>
           )}

@@ -106,7 +106,7 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
   const [error, setError]   = useState('');
   const isDirty    = !schedule || JSON.stringify(s) !== JSON.stringify(schedule);
   const nameRef    = useRef<HTMLInputElement>(null);
-  const YEAR_PLACEHOLDER = '1970'; // any open-ended year
+  const YEAR_PLACEHOLDER = String(new Date().getFullYear());
 
   // "Any year" means only month+day matter — we store 1970 as the canonical year
   const isAnyYear = (date: string | null) => !date || date.startsWith(YEAR_PLACEHOLDER) || !date;
@@ -271,7 +271,7 @@ function RunEditor({ run, index, zoneNames, canRemove, onChange, onRemove }: {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Zone</label>
-          <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+          <select className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
             value={run.zone_id} onChange={e => onChange({ zone_id: Number(e.target.value) })}>
             {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
               <option key={n} value={n}>{zoneNames[n] ?? `Zone ${n}`}</option>
@@ -384,7 +384,7 @@ function MonthDayPicker({ id, value, onChange, placeholder }: {
   return (
     <div className="flex gap-2">
       <select id={id} aria-label="Month" value={month} onChange={e => handleMonth(Number(e.target.value))}
-        className={`flex-1 ${selectClass}`}>
+        className={`w-36 ${selectClass}`}>
         {placeholder && <option value={0}>Month</option>}
         {MONTHS.map((name, i) => (
           <option key={i + 1} value={i + 1}>{name}</option>
@@ -392,7 +392,7 @@ function MonthDayPicker({ id, value, onChange, placeholder }: {
       </select>
       <select aria-label="Day" value={day} onChange={e => handleDay(Number(e.target.value))}
         disabled={month === 0}
-        className={`w-20 ${selectClass} ${month === 0 ? 'opacity-40' : ''}`}>
+        className={`w-16 ${selectClass} ${month === 0 ? 'opacity-40' : ''}`}>
         {placeholder && <option value={0}>Day</option>}
         {daysForMonth(month || 1).map(d => (
           <option key={d} value={d}>{d}</option>
