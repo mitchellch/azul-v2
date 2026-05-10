@@ -253,15 +253,28 @@ All enforcement happens in Lambda authorizers — no client-side trust.
 
 ## 8. Communication Architecture
 
-The backend acts as a **command bus** between web/mobile clients and controllers. BLE (direct) and cloud (via MQTT) are parallel paths:
+The backend acts as a **command bus** between web/mobile clients and controllers. Cloud mode is the default; BLE is a fallback for degraded or offline WiFi conditions.
 
 ```
 Web App  ──HTTPS──▶ API Gateway ──MQTT publish──▶ Controller
-Mobile   ──BLE (direct, in range)───────────────▶ Controller
-Mobile   ──HTTPS──▶ API Gateway ──MQTT publish──▶ Controller (remote)
+Mobile   ──HTTPS──▶ API Gateway ──MQTT publish──▶ Controller (cloud mode, default)
+Mobile   ──BLE (direct)─────────────────────────▶ Controller (local mode, fallback)
 ```
 
 **Key principle:** The controller is the source of truth. The backend syncs state from the controller (via MQTT status messages) and writes commands to it (via MQTT command topics). The backend never assumes a command succeeded — it waits for the controller to publish a confirming status update.
+
+See [mobile-connectivity.md](mobile-connectivity.md) for the full decision on when the mobile app uses cloud vs BLE mode.
+
+### 8.2. Connection Health Grading
+
+The backend tracks per-device MQTT health using a rolling 5-minute window of status pings and exposes a graded connection status for mobile clients to query on startup:
+
+```
+GET /api/devices/:mac/connection-status
+→ { status: "good|degraded|poor|offline", recommendLocalMode: bool, ... }
+```
+
+Implementation: `server/src/lib/connectionMonitor.ts`
 
 ### 8.1. Controller Cloud Registration
 

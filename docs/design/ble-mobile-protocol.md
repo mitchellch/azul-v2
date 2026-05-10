@@ -3,6 +3,8 @@
 **Status:** Approved  
 **Scope:** All BLE communication between the Azul mobile app and the main controller firmware.
 
+> **BLE is a fallback, not the primary communication channel.** The mobile app defaults to cloud mode (via the backend API). BLE is used when WiFi is unavailable or degraded. See [mobile-connectivity.md](mobile-connectivity.md) for the full connectivity decision and startup flow.
+
 ---
 
 ## 1. GATT Service and Characteristics
