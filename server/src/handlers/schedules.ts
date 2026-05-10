@@ -25,6 +25,22 @@ const ScheduleSchema = z.object({
   runs:       z.array(RunSchema).min(1),
 });
 
+function datesOverlap(start1: string, end1: string | null, start2: string, end2: string | null): boolean {
+  const s1 = new Date(start1);
+  const e1 = end1 ? new Date(end1) : new Date('9999-12-31');
+  const s2 = new Date(start2);
+  const e2 = end2 ? new Date(end2) : new Date('9999-12-31');
+  return !(e1 < s2 || s1 > e2);
+}
+
+async function checkOverlapWithExisting(deviceId: string, startDate: string, endDate: string | null, excludeUuid?: string): Promise<boolean> {
+  const existing = await db.schedule.findMany({
+    where: { deviceId, ...(excludeUuid && { uuid: { not: excludeUuid } }) },
+    select: { startDate: true, endDate: true },
+  });
+  return existing.some(s => datesOverlap(startDate, endDate, s.startDate, s.endDate));
+}
+
 async function getFullSchedule(uuid: string) {
   return db.schedule.findUnique({ where: { uuid }, include: { runs: true } });
 }
@@ -36,7 +52,7 @@ schedulesRouter.get('/', async (req: Request, res: Response, next: NextFunction)
     const schedules = await db.schedule.findMany({
       where:   { deviceId: device.id },
       include: { runs: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { startDate: 'asc' },
     });
     res.json(schedules.map(toPayload));
   } catch (err) { next(err); }
@@ -75,9 +91,13 @@ schedulesRouter.post('/', async (req: Request, res: Response, next: NextFunction
     const body = ScheduleSchema.safeParse(req.body);
     if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten()));
 
-    const uuid = randomUUID();
     const { name, start_date, end_date, runs } = body.data;
 
+    if (await checkOverlapWithExisting(device.id, start_date, end_date ?? null)) {
+      throw new HttpError(409, 'Date range overlaps existing schedule');
+    }
+
+    const uuid = randomUUID();
     const schedule = await db.schedule.create({
       data: {
         deviceId:  device.id,
@@ -115,6 +135,10 @@ schedulesRouter.put('/:uuid', async (req: Request, res: Response, next: NextFunc
     if (!existing) throw new HttpError(404, 'Schedule not found');
 
     const { name, start_date, end_date, runs } = body.data;
+
+    if (await checkOverlapWithExisting(device.id, start_date, end_date ?? null, req.params.uuid)) {
+      throw new HttpError(409, 'Date range overlaps existing schedule');
+    }
 
     // Recreate runs (simpler than diffing)
     await db.scheduleRun.deleteMany({ where: { scheduleId: existing.id } });
@@ -156,30 +180,3 @@ schedulesRouter.delete('/:uuid', async (req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 });
 
-// POST /api/devices/:mac/schedules/:uuid/activate
-schedulesRouter.post('/:uuid/activate', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
-    const target = await db.schedule.findFirst({ where: { uuid: req.params.uuid, deviceId: device.id } });
-    if (!target) throw new HttpError(404, 'Schedule not found');
-
-    // Deactivate all others, activate this one
-    await db.$transaction([
-      db.schedule.updateMany({ where: { deviceId: device.id }, data: { active: false } }),
-      db.schedule.update({ where: { id: target.id }, data: { active: true } }),
-    ]);
-
-    mqttClient.publish(req.params.mac, 'schedule/activate', { uuid: req.params.uuid });
-    res.json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// DELETE /api/devices/:mac/schedules/active  (deactivate)
-schedulesRouter.delete('/active', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
-    await db.schedule.updateMany({ where: { deviceId: device.id, active: true }, data: { active: false } });
-    mqttClient.publish(req.params.mac, 'schedule/deactivate', {});
-    res.json({ ok: true });
-  } catch (err) { next(err); }
-});

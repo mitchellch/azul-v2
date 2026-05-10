@@ -229,20 +229,20 @@ void MqttManager::handleMessage(const char* topic, const char* payload) {
             Serial.printf("[MQTT] schedule/set parse error: %s\n", errMsg);
             return;
         }
-        auto result = _scheduler.createSchedule(s);
+        char startStr[11], endStr[11];
+        TimeManager::daysToIsoDate(s.startDate, startStr);
+        TimeManager::daysToIsoDate(s.endDate, endStr);
+        Serial.printf("[MQTT] schedule/set: %s from %s to %s\n", s.name, startStr, (s.endDate == 0xFFFFFFFF ? "open-ended" : endStr));
+        // Try to update existing schedule first; create if it doesn't exist
+        auto result = _scheduler.updateSchedule(s);
         if (!result.ok) {
-            Serial.printf("[MQTT] schedule/set create error: %s\n", result.message);
-            return;
+            result = _scheduler.createSchedule(s);
+            if (!result.ok) {
+                Serial.printf("[MQTT] schedule/set create error: %s\n", result.message);
+                return;
+            }
         }
-        _scheduler.activateSchedule(s.uuid);
-
-    } else if (strcmp(cmd, "schedule/activate") == 0) {
-        const char* uuid = data["uuid"] | "";
-        if (!uuid[0]) return;
-        _scheduler.activateSchedule(uuid);
-
-    } else if (strcmp(cmd, "schedule/deactivate") == 0) {
-        _scheduler.deactivate();
+        // Don't auto-activate — user must explicitly activate via activate endpoint
 
     } else if (strcmp(cmd, "schedule/delete") == 0) {
         const char* uuid = data["uuid"] | "";

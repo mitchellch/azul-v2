@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 
 export type ScheduleRun = {
   zone_id: number;
@@ -103,7 +103,14 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
   const [s, setS]       = useState<Schedule>(schedule ? JSON.parse(JSON.stringify(schedule)) : blankSchedule());
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
-  const isDirty      = !schedule || JSON.stringify(s) !== JSON.stringify(schedule);
+  const isDirty = useMemo(() => {
+    if (!schedule) return true;
+    const sCompare = { ...s };
+    const scheduleCompare = { ...schedule };
+    delete sCompare.active;
+    delete scheduleCompare.active;
+    return JSON.stringify(sCompare) !== JSON.stringify(scheduleCompare);
+  }, [s, schedule]);
   const nameRef      = useRef<HTMLInputElement>(null);
   const [expandedRun, setExpandedRun] = useState<number | null>(schedule ? null : 0);
   const YEAR_PLACEHOLDER = String(new Date().getFullYear());

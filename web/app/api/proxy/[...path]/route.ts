@@ -8,11 +8,16 @@ async function handler(req: NextRequest, { params }: { params: { path: string[] 
     // Try getAccessToken first; fall back to session.accessToken if it fails
     let accessToken: string | undefined;
     try {
-      const result = await getAccessToken({ authorizationParams: { audience: process.env.AUTH0_AUDIENCE } });
+      const result = await getAccessToken();
       accessToken = result.accessToken;
-    } catch {
+    } catch (tokenErr: any) {
+      console.error('[proxy] getAccessToken failed:', tokenErr.message);
       const session = await getSession();
       accessToken = session?.accessToken;
+    }
+    if (!accessToken) {
+      console.error('[proxy] No access token available');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
     const url  = `${BACKEND}/${params.path.join('/')}${req.nextUrl.search}`;
     const init: RequestInit = {

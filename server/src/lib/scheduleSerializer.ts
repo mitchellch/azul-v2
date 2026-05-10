@@ -15,6 +15,7 @@ export type SchedulePayload = {
   name: string;
   start_date: string;
   end_date: string | null;
+  active?: boolean;
   runs: ScheduleRunPayload[];
 };
 
@@ -24,6 +25,7 @@ export function toPayload(schedule: Schedule & { runs: ScheduleRun[] }): Schedul
     name:       schedule.name,
     start_date: schedule.startDate,
     end_date:   schedule.endDate ?? null,
+    ...(schedule.active && { active: true }),
     runs: schedule.runs.map(r => ({
       zone_id:          r.zoneNumber,
       day_mask:         r.dayMask,

@@ -114,7 +114,10 @@ bool Scheduler::wouldOverlap(const Schedule& candidate) const {
 }
 
 ValidationResult Scheduler::createSchedule(Schedule& s) {
-    ScheduleStore::generateUuid(s.uuid);
+    // Only generate UUID if one wasn't provided (e.g., from backend sync)
+    if (!s.uuid[0]) {
+        ScheduleStore::generateUuid(s.uuid);
+    }
 
     if (wouldOverlap(s)) {
         ValidationResult r;
@@ -186,7 +189,20 @@ ValidationResult Scheduler::activateSchedule(const char* uuid) {
 }
 
 const Schedule* Scheduler::getActiveSchedule() const {
-    if (_activeLoaded) return &_active;
+    uint32_t today = _time.todayAsDaysSinceEpoch();
+
+    Schedule all[SCHEDULE_RING_SIZE];
+    uint8_t count = 0;
+    _store.getAll(all, count);
+
+    for (uint8_t i = 0; i < count; i++) {
+        if (today >= all[i].startDate && today <= all[i].endDate) {
+            // Found the schedule for today — cache it (cast away const for internal update)
+            const_cast<Scheduler*>(this)->_active = all[i];
+            const_cast<Scheduler*>(this)->_activeLoaded = true;
+            return &_active;
+        }
+    }
     return nullptr;
 }
 

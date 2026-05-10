@@ -29,6 +29,9 @@ void scheduleToJson(const Schedule& s, JsonObject& obj) {
 bool jsonToSchedule(const JsonVariant& body, Schedule& s, char* errOut, size_t errLen) {
   memset(&s, 0, sizeof(s));
 
+  const char* uuid = body["uuid"] | "";
+  if (uuid[0]) strlcpy(s.uuid, uuid, sizeof(s.uuid));
+
   const char* name = body["name"] | "";
   if (!name[0]) { strlcpy(errOut, "name required", errLen); return false; }
   strlcpy(s.name, name, sizeof(s.name));

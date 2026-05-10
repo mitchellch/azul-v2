@@ -139,14 +139,11 @@ export default function ControllerPage() {
     await fetch(`/api/proxy/devices/${mac}/zones/stop-all`, { method: 'POST' });
   }
 
-  async function toggleSchedule(uuid: string, active: boolean) {
-    if (active) {
-      await fetch(`/api/proxy/devices/${mac}/schedules/active`, { method: 'DELETE' });
-    } else {
-      await fetch(`/api/proxy/devices/${mac}/schedules/${uuid}/activate`, { method: 'POST' });
-    }
-    const updated = await apiFetch(`/devices/${mac}/schedules`);
-    setSchedules(updated);
+  function isScheduleActive(s: Schedule): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    const startOk = today >= s.start_date;
+    const endOk = !s.end_date || today <= s.end_date;
+    return startOk && endOk;
   }
 
   async function saveSchedule(s: Schedule) {
@@ -310,7 +307,9 @@ export default function ControllerPage() {
                   </div>
                 )}
                 {schedules.map(s => (
-                  <div key={s.uuid} className="bg-white rounded-xl shadow-sm p-4">
+                  <div key={s.uuid}
+                    onClick={() => setEditingSchedule(s)}
+                    className="bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0 mr-4">
                         <p className="font-semibold text-gray-900">{s.name}</p>
@@ -320,18 +319,13 @@ export default function ControllerPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => setEditingSchedule(s)}
-                          className="text-xs text-gray-400 hover:text-gray-700 px-2 py-1">✏ Edit</button>
-                        <button onClick={() => deleteSchedule(s.uuid!)}
+                        <button onClick={e => { e.stopPropagation(); deleteSchedule(s.uuid!); }}
                           className="text-xs text-red-400 hover:text-red-600 px-2 py-1">🗑</button>
-                        <button onClick={() => toggleSchedule(s.uuid!, s.active ?? false)}
-                          className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
-                            s.active
-                              ? 'bg-blue-100 text-[#1a56db] hover:bg-blue-200'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}>
-                          {s.active ? '● Active' : 'Activate'}
-                        </button>
+                        {isScheduleActive(s) && (
+                          <span className="text-xs font-semibold px-3 py-1.5 bg-green-100 text-green-700 rounded-full">
+                            ● Active
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -341,9 +335,9 @@ export default function ControllerPage() {
               {/* Info — below the list */}
               <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
                 <p className="font-semibold">About Schedules</p>
-                <p>A schedule defines when your zones run automatically during the week. Each schedule runs for a period of time defined by a start and end date — or you can set it to repeat every year between those same dates.</p>
-                <p>You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each. Only one schedule is active at a time.</p>
-                <p>Schedules must not have overlapping date ranges — the controller will reject overlaps. Common use: one schedule for summer, one for winter, one for a specific season or event.</p>
+                <p>A schedule defines when your zones run automatically. The active schedule is determined automatically by today's date — whichever schedule's date range includes today is active and runs.</p>
+                <p>You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each. Schedules must not have overlapping date ranges.</p>
+                <p>Common use: one schedule for summer (Jun–Aug), one for fall (Sep–May). When today moves into the fall range, it automatically becomes active.</p>
               </div>
             </>
           )}
