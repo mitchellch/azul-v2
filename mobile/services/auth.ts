@@ -22,6 +22,20 @@ export async function login() {
   return credentials;
 }
 
+export async function register() {
+  const credentials = await auth0.webAuth.authorize({
+    scope: 'openid profile email offline_access',
+    audience: 'https://api.azul',
+    additionalParameters: { screen_hint: 'signup' },
+  });
+
+  if (credentials.refreshToken) {
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, credentials.refreshToken);
+  }
+
+  return credentials;
+}
+
 export async function logout() {
   await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
 }

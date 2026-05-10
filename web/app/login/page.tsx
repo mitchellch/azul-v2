@@ -10,6 +10,12 @@ export default function LoginPage() {
         >
           Sign In
         </a>
+        <a
+          href="/api/auth/login?screen_hint=signup"
+          className="block w-full mt-3 text-[#1a56db] font-semibold py-3 rounded-lg border border-[#1a56db] hover:bg-blue-50 transition-colors"
+        >
+          Create Account
+        </a>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { login, parseIdToken } from '@/services/auth';
+import { login, register, parseIdToken } from '@/services/auth';
 import { useAuthStore } from '@/store/auth';
 
 export default function LoginScreen() {
@@ -8,11 +8,11 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const setSession = useAuthStore((s) => s.setSession);
 
-  async function handleLogin() {
+  async function handleAuth(fn: typeof login) {
     setLoading(true);
     setError(null);
     try {
-      const credentials = await login();
+      const credentials = await fn();
       const userInfo = parseIdToken(credentials.idToken);
       setSession(userInfo as any, credentials.accessToken);
     } catch (e: any) {
@@ -31,12 +31,16 @@ export default function LoginScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+      <TouchableOpacity style={styles.button} onPress={() => handleAuth(login)} disabled={loading}>
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.buttonText}>Sign In</Text>
         )}
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.buttonOutline} onPress={() => handleAuth(register)} disabled={loading}>
+        <Text style={styles.buttonOutlineText}>Create Account</Text>
       </TouchableOpacity>
     </View>
   );
@@ -79,5 +83,20 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     marginBottom: 16,
     textAlign: 'center',
+  },
+  buttonOutline: {
+    borderWidth: 1.5,
+    borderColor: '#1a56db',
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    borderRadius: 8,
+    minWidth: 200,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  buttonOutlineText: {
+    color: '#1a56db',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
