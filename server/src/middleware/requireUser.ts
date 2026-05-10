@@ -28,7 +28,10 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
   try {
     const user = await db.user.upsert({
       where:  { auth0Sub: sub },
-      update: { email: email ?? '', name: name ?? null },
+      update: {
+        ...(email ? { email } : {}),
+        ...(name  ? { name  } : {}),
+      },
       create: { auth0Sub: sub, email: email ?? sub, name: name ?? null },
     });
     req.user = user;

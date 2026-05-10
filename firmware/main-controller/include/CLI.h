@@ -48,6 +48,8 @@ private:
   void cmdStopAll();
   void cmdWifiSet(const char* args);
   void cmdWifiStatus();
+  void cmdMqttSet(const char* args);
+  void cmdMqttStatus();
   void cmdVersion();
   void cmdSchedule();
   void cmdSchedules();

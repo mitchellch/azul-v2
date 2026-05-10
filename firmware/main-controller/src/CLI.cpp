@@ -207,7 +207,7 @@ void CLI::poll() {
 uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
   static const char* cmds[] = {
     "help", "status", "zones", "start", "stop", "stop-all",
-    "wifi-set", "wifi-status", "version",
+    "wifi-set", "wifi-status", "mqtt-set", "mqtt-status", "version",
     "schedule", "schedules", "log",
     "tz-get", "tz-set", "nvs-dump", "reboot"
   };
@@ -266,6 +266,8 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "stop-all")    == 0) cmdStopAll();
   else if (strcmp(cmd, "wifi-set")    == 0) cmdWifiSet(args);
   else if (strcmp(cmd, "wifi-status") == 0) cmdWifiStatus();
+  else if (strcmp(cmd, "mqtt-set")    == 0) cmdMqttSet(args);
+  else if (strcmp(cmd, "mqtt-status") == 0) cmdMqttStatus();
   else if (strcmp(cmd, "version")     == 0) cmdVersion();
   else if (strcmp(cmd, "schedule")    == 0) cmdSchedule();
   else if (strcmp(cmd, "schedules")   == 0) cmdSchedules();
@@ -286,6 +288,8 @@ void CLI::printHelp() {
   Serial.println("  stop-all                  Stop all zones");
   Serial.println("  wifi-set <ssid> <pass>    Save WiFi credentials");
   Serial.println("  wifi-status               Show WiFi connection status");
+  Serial.println("  mqtt-set <host> <port>    Save MQTT broker (e.g. mqtt-set 192.168.1.153 1883)");
+  Serial.println("  mqtt-status               Show MQTT broker config");
   Serial.println("  version                   Show firmware version");
   Serial.println("  reboot                    Reboot the device");
   Serial.println("  Up/Down arrows            Browse command history");
@@ -501,6 +505,35 @@ void CLI::cmdWifiStatus() {
       Serial.println("No credentials saved");
     }
   }
+}
+
+void CLI::cmdMqttSet(const char* args) {
+  const char* space = strchr(args, ' ');
+  if (!space) {
+    Serial.println("Usage: mqtt-set <host> <port>");
+    return;
+  }
+  char host[64] = {0};
+  strlcpy(host, args, min((size_t)(space - args + 1), sizeof(host)));
+  int port = atoi(space + 1);
+  if (port <= 0) port = 1883;
+
+  Preferences prefs;
+  prefs.begin("mqtt", false);
+  prefs.putString("url", host);
+  prefs.putInt("port", port);
+  prefs.end();
+
+  Serial.printf("MQTT broker saved: %s:%d — reboot to connect.\r\n", host, port);
+}
+
+void CLI::cmdMqttStatus() {
+  Preferences prefs;
+  prefs.begin("mqtt", true);
+  String url  = prefs.getString("url", "localhost");
+  int    port = prefs.getInt("port", 1883);
+  prefs.end();
+  Serial.printf("MQTT broker: %s:%d\r\n", url.c_str(), port);
 }
 
 void CLI::cmdSchedule() {

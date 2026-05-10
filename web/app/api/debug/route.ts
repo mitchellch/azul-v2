@@ -6,10 +6,11 @@ export async function GET() {
     const session = await getSession();
     if (!session) return NextResponse.json({ session: null });
     return NextResponse.json({
-      hasSession: true,
-      hasAccessToken: !!session.accessToken,
-      tokenPreview: session.accessToken?.slice(0, 40),
       user: session.user?.email,
+      hasAccessToken: !!session.accessToken,
+      accessTokenPreview: session.accessToken?.slice(0, 50),
+      tokenType: session.tokenType,
+      scopes: session.scope,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message });
