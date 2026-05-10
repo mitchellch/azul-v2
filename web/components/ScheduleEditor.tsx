@@ -112,7 +112,7 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
     return JSON.stringify(sCompare) !== JSON.stringify(scheduleCompare);
   }, [s, schedule]);
   const nameRef      = useRef<HTMLInputElement>(null);
-  const [expandedRun, setExpandedRun] = useState<number | null>(schedule ? null : 0);
+  const [expandedRun, setExpandedRun] = useState<number | null>(null);
   const YEAR_PLACEHOLDER = String(new Date().getFullYear());
 
   // "Any year" means only month+day matter — we store 1970 as the canonical year
@@ -269,7 +269,7 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
           <div className="flex items-center justify-between mb-3">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Zone Schedules</label>
             <button onClick={() => {
-              setExpandedRun(s.runs.length); // expand the new one
+              setExpandedRun(s.runs.length);
               setS(p => ({ ...p, runs: [...p.runs, blankRun()] }));
             }} className="text-xs font-semibold text-[#1a56db] hover:underline">+ Add Zone</button>
           </div>
@@ -317,10 +317,9 @@ function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onCha
 
   if (!expanded) {
     return (
-      <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 hover:border-gray-300 transition-colors">
-        <button type="button" onClick={onExpand} className="flex-1 text-left">
-          <p className="text-sm text-gray-700 truncate">{runSummary(run, zoneNames)}</p>
-        </button>
+      <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 hover:border-gray-300 transition-colors cursor-pointer"
+        onClick={onExpand}>
+        <p className="text-sm text-gray-700 truncate flex-1">{runSummary(run, zoneNames)}</p>
         {canRemove && (
           <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }}
             aria-label="Remove zone schedule"
@@ -341,11 +340,11 @@ function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onCha
         )}
       </div>
 
-      {/* Zone + Time side by side */}
+      {/* Zone + Time */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Zone</label>
-          <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db] max-w-full"
+          <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
             value={run.zone_id} onChange={e => onChange({ zone_id: Number(e.target.value) })}>
             {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
               <option key={n} value={n}>{zoneNames[n] ?? `Zone ${n}`}</option>
