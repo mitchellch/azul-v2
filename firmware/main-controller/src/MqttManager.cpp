@@ -57,6 +57,11 @@ void MqttManager::begin() {
 
     _queue.onZoneStart = [this](uint8_t zoneId, uint16_t durationSec, uint8_t source) {
         publishZoneEvent(zoneId, durationSec, source);
+        publishStatus(); // immediate status push when zone starts
+    };
+
+    _queue.onZoneStop = [this]() {
+        publishStatus(); // immediate status push when zone stops
     };
 
     reconnect();

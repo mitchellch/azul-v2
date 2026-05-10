@@ -63,8 +63,15 @@ void ZoneQueue::cancelAll() {
 }
 
 void ZoneQueue::tick() {
-    // If a zone is currently running, nothing to do
-    if (_zones.isAnyZoneRunning()) return;
+    bool running = _zones.isAnyZoneRunning();
+
+    // Detect zone completion — was running last tick, now idle with nothing new to start
+    if (!running && _wasRunning && _count == 0) {
+        if (onZoneStop) onZoneStop();
+    }
+    _wasRunning = running;
+
+    if (running) return;
 
     // Dequeue and start the next entry
     QueueEntry entry;

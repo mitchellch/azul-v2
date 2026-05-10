@@ -38,8 +38,10 @@ public:
     void tick();
 
     // Optional callback: called when a zone transitions from queued → running.
-    // Args: zoneId, durationSeconds, source (AuditSource)
     std::function<void(uint8_t, uint16_t, uint8_t)> onZoneStart;
+
+    // Optional callback: called when a running zone stops (timer expired or cancelled).
+    std::function<void()> onZoneStop;
 
     uint8_t count() const { return _count; }
     bool    isEmpty() const { return _count == 0; }
@@ -53,9 +55,10 @@ private:
     AuditLog&       _audit;
 
     QueueEntry _queue[ZONE_QUEUE_DEPTH];
-    uint8_t    _head;   // next to dequeue
-    uint8_t    _tail;   // next to enqueue
+    uint8_t    _head;        // next to dequeue
+    uint8_t    _tail;        // next to enqueue
     uint8_t    _count;
+    bool       _wasRunning = false;
 
     bool dequeue(QueueEntry& out);
 };
