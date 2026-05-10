@@ -101,6 +101,7 @@ void loop() {
 
   if (mqttStarted && (now - lastMqttStatus >= MQTT_PUBLISH_INTERVAL_MS)) {
     mqttManager.publishStatus();
+    mqttManager.publishSchedules();
     lastMqttStatus = now;
   }
 

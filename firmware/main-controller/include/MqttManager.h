@@ -17,6 +17,7 @@ public:
     void tick();
 
     void publishStatus();
+    void publishSchedules();
     void publishZoneEvent(uint8_t zoneId, uint16_t durationSeconds, uint8_t source);
 
     bool isConnected();
@@ -32,10 +33,11 @@ private:
     PubSubClient _client;
 
     char _mac[18];           // "E8:F6:0A:85:4C:90"
-    char _topicStatus[48];   // "azul/{mac}/status"
-    char _topicEvents[48];   // "azul/{mac}/events"
-    char _topicCmdSub[52];   // "azul/{mac}/cmd/#"
-    char _topicCmdPrefix[44];// "azul/{mac}/cmd/"
+    char _topicStatus[48];    // "azul/{mac}/status"
+    char _topicEvents[48];    // "azul/{mac}/events"
+    char _topicSchedules[52]; // "azul/{mac}/schedules"
+    char _topicCmdSub[52];    // "azul/{mac}/cmd/#"
+    char _topicCmdPrefix[44]; // "azul/{mac}/cmd/"
     char _clientId[24];      // "azul-{last6}"
 
     char _brokerUrl[64];

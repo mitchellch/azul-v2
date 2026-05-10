@@ -44,10 +44,11 @@ void MqttManager::begin() {
     const char* last5 = _mac + strlen(_mac) - 5;
     snprintf(_clientId, sizeof(_clientId), "azul-%.5s", last5);
 
-    snprintf(_topicStatus,    sizeof(_topicStatus),    "azul/%s/status", _mac);
-    snprintf(_topicEvents,    sizeof(_topicEvents),    "azul/%s/events", _mac);
-    snprintf(_topicCmdSub,    sizeof(_topicCmdSub),    "azul/%s/cmd/#",  _mac);
-    snprintf(_topicCmdPrefix, sizeof(_topicCmdPrefix), "azul/%s/cmd/",   _mac);
+    snprintf(_topicStatus,    sizeof(_topicStatus),    "azul/%s/status",    _mac);
+    snprintf(_topicEvents,    sizeof(_topicEvents),    "azul/%s/events",    _mac);
+    snprintf(_topicSchedules, sizeof(_topicSchedules), "azul/%s/schedules", _mac);
+    snprintf(_topicCmdSub,    sizeof(_topicCmdSub),    "azul/%s/cmd/#",     _mac);
+    snprintf(_topicCmdPrefix, sizeof(_topicCmdPrefix), "azul/%s/cmd/",      _mac);
 
     loadBrokerConfig();
 
@@ -90,6 +91,7 @@ void MqttManager::reconnect() {
         Serial.println("[MQTT] Connected");
         _client.subscribe(_topicCmdSub);
         publishStatus();
+        publishSchedules(); // sync all schedules to backend on connect
     } else {
         Serial.printf("[MQTT] Connect failed, rc=%d — retry in %ds\n",
                       _client.state(), MQTT_RECONNECT_INTERVAL_MS / 1000);
@@ -130,6 +132,35 @@ void MqttManager::publishStatus() {
     char buf[512];
     size_t len = serializeJson(doc, buf, sizeof(buf));
     _client.publish(_topicStatus, (const uint8_t*)buf, len, false);
+}
+
+void MqttManager::publishSchedules() {
+    if (!_client.connected()) return;
+
+    Schedule all[SCHEDULE_RING_SIZE];
+    uint8_t count = 0;
+    _scheduler.getAllSchedules(all, count);
+
+    // Get active UUID
+    const Schedule* active = _scheduler.getActiveSchedule();
+    const char* activeUuid = (active && !_scheduler.isKeepaliveActive()) ? active->uuid : "";
+
+    // Serialize all schedules to JSON
+    JsonDocument doc;
+    doc["active_uuid"] = activeUuid;
+    JsonArray arr = doc["schedules"].to<JsonArray>();
+
+    for (uint8_t i = 0; i < count; i++) {
+        JsonObject s = arr.add<JsonObject>();
+        scheduleToJson(all[i], s);
+        s["active"] = (strcmp(all[i].uuid, activeUuid) == 0);
+    }
+
+    // Use dynamic buffer — schedule JSON can exceed 512 bytes
+    String out;
+    serializeJson(doc, out);
+    _client.setBufferSize(max((uint16_t)1024, (uint16_t)(out.length() + 64)));
+    _client.publish(_topicSchedules, (const uint8_t*)out.c_str(), out.length(), false);
 }
 
 void MqttManager::publishZoneEvent(uint8_t zoneId, uint16_t durationSeconds, uint8_t source) {

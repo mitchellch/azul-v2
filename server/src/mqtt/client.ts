@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { handleDeviceStatus, handleDeviceEvent } from './handlers';
+import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules } from './handlers';
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 
@@ -14,7 +14,8 @@ class MqttClient {
       // Subscribe to all device status and event topics
       this.client!.subscribe('azul/+/status');
       this.client!.subscribe('azul/+/events');
-      console.log('[MQTT] Subscribed to azul/+/status and azul/+/events');
+      this.client!.subscribe('azul/+/schedules');
+      console.log('[MQTT] Subscribed to azul/+/status, azul/+/events, azul/+/schedules');
     });
 
     this.client.on('message', (topic, payload) => {
@@ -25,8 +26,9 @@ class MqttClient {
 
       try {
         const data = JSON.parse(payload.toString());
-        if      (msgType === 'status') handleDeviceStatus(mac, data);
-        else if (msgType === 'events') handleDeviceEvent(mac, data);
+        if      (msgType === 'status')    handleDeviceStatus(mac, data);
+        else if (msgType === 'events')    handleDeviceEvent(mac, data);
+        else if (msgType === 'schedules') handleDeviceSchedules(mac, data);
       } catch {
         console.error(`[MQTT] Failed to parse message on ${topic}`);
       }
