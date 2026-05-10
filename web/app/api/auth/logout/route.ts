@@ -1,2 +1,3 @@
 import { handleLogout } from '@auth0/nextjs-auth0';
-export async function GET(req: Request) { return handleLogout(req as any); }
+export async function GET(req: Request): Promise<Response> { return handleLogout(req as any) as any; }
+export const dynamic = 'force-dynamic';

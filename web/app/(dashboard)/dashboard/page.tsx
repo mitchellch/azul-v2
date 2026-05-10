@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 
 type Device = {
@@ -21,13 +21,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
 
-  useEffect(() => {
+  const fetchDevices = useCallback(() => {
     fetch('/api/proxy/devices')
       .then(r => r.ok ? r.json() : Promise.reject(`Error ${r.status}`))
       .then(setDevices)
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchDevices();
+    const interval = setInterval(fetchDevices, 30_000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, [fetchDevices]);
 
   if (loading) return (
     <div className="flex justify-center py-20">
