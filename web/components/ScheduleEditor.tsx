@@ -104,8 +104,9 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
   const [s, setS]       = useState<Schedule>(schedule ? JSON.parse(JSON.stringify(schedule)) : blankSchedule());
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
-  const isDirty    = !schedule || JSON.stringify(s) !== JSON.stringify(schedule);
-  const nameRef    = useRef<HTMLInputElement>(null);
+  const isDirty      = !schedule || JSON.stringify(s) !== JSON.stringify(schedule);
+  const nameRef      = useRef<HTMLInputElement>(null);
+  const [expandedRun, setExpandedRun] = useState<number | null>(schedule ? null : 0);
   const YEAR_PLACEHOLDER = String(new Date().getFullYear());
 
   // "Any year" means only month+day matter — we store 1970 as the canonical year
@@ -236,15 +237,25 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
         <div>
           <div className="flex items-center justify-between mb-3">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Zone Schedules</label>
-            <button onClick={() => setS(p => ({ ...p, runs: [...p.runs, blankRun()] }))}
-              className="text-xs font-semibold text-[#1a56db] hover:underline">+ Add Zone</button>
+            <button onClick={() => {
+              setExpandedRun(s.runs.length); // expand the new one
+              setS(p => ({ ...p, runs: [...p.runs, blankRun()] }));
+            }} className="text-xs font-semibold text-[#1a56db] hover:underline">+ Add Zone</button>
           </div>
-          <div className="space-y-4">
-            {s.runs.map((run, i) => (
-              <RunEditor key={i} run={run} index={i} zoneNames={zoneNames} canRemove={s.runs.length > 1}
-                onChange={patch => updateRun(i, patch)}
-                onRemove={() => setS(p => ({ ...p, runs: p.runs.filter((_, idx) => idx !== i) }))} />
-            ))}
+          <div className="space-y-3">
+            {[...s.runs]
+              .map((run, i) => ({ run, i }))
+              .sort((a, b) => a.run.zone_id - b.run.zone_id)
+              .map(({ run, i }) => (
+                <RunEditor key={i} run={run} index={i} zoneNames={zoneNames} canRemove={s.runs.length > 1}
+                  expanded={expandedRun === i}
+                  onExpand={() => setExpandedRun(expandedRun === i ? null : i)}
+                  onChange={patch => updateRun(i, patch)}
+                  onRemove={() => {
+                    setS(p => ({ ...p, runs: p.runs.filter((_, idx) => idx !== i) }));
+                    if (expandedRun === i) setExpandedRun(null);
+                  }} />
+              ))}
           </div>
         </div>
       </div>
@@ -252,16 +263,36 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
   );
 }
 
-function RunEditor({ run, index, zoneNames, canRemove, onChange, onRemove }: {
+function runSummary(run: ScheduleRun, zoneNames: Record<number, string>): string {
+  const zone  = zoneNames[run.zone_id] ?? `Zone ${run.zone_id}`;
+  const time  = `${pad(run.hour)}:${pad(run.minute)}`;
+  const dur   = formatDur(run.duration_seconds);
+  const sched = (run.interval_days ?? 1) > 1
+    ? `every ${run.interval_days} days`
+    : ['Su','Mo','Tu','We','Th','Fr','Sa'].filter((_, d) => run.day_mask & (1 << d)).join(' ');
+  return `${zone}  ·  ${time}  ·  ${dur}  ·  ${sched || 'no days'}`;
+}
+
+function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onChange, onRemove }: {
   run: ScheduleRun; index: number; zoneNames: Record<number, string>;
-  canRemove: boolean; onChange: (p: Partial<ScheduleRun>) => void; onRemove: () => void;
+  canRemove: boolean; expanded: boolean; onExpand: () => void;
+  onChange: (p: Partial<ScheduleRun>) => void; onRemove: () => void;
 }) {
   const useInterval = (run.interval_days ?? 1) > 1;
 
+  if (!expanded) {
+    return (
+      <button type="button" onClick={onExpand}
+        className="w-full text-left border border-gray-200 rounded-xl px-4 py-3 hover:border-[#1a56db] hover:bg-blue-50 transition-colors">
+        <p className="text-sm text-gray-700 truncate">{runSummary(run, zoneNames)}</p>
+      </button>
+    );
+  }
+
   return (
-    <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+    <div className="border border-[#1a56db] rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-400 uppercase">Zone Schedule {index + 1}</span>
+        <button type="button" onClick={onExpand} className="text-xs text-gray-400 hover:text-gray-600">▾ Collapse</button>
         {canRemove && (
           <button onClick={onRemove} className="text-xs text-red-400 hover:text-red-600">Remove</button>
         )}
@@ -271,7 +302,7 @@ function RunEditor({ run, index, zoneNames, canRemove, onChange, onRemove }: {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Zone</label>
-          <select className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+          <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db] max-w-full"
             value={run.zone_id} onChange={e => onChange({ zone_id: Number(e.target.value) })}>
             {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
               <option key={n} value={n}>{zoneNames[n] ?? `Zone ${n}`}</option>
@@ -292,9 +323,9 @@ function RunEditor({ run, index, zoneNames, canRemove, onChange, onRemove }: {
 
       {/* Duration slider */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-gray-500">Duration</label>
-          <span className="text-sm font-bold text-[#1a56db]">{formatDur(run.duration_seconds)}</span>
+        <div className="flex items-center gap-2 mb-1">
+          <label className="text-xs text-gray-500">Duration:</label>
+          <span className="text-base font-bold text-[#1a56db]">{formatDur(run.duration_seconds)}</span>
         </div>
         <input type="range" min="0" max="100" step="1"
           value={secsToSlider(run.duration_seconds)}
