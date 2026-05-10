@@ -111,7 +111,18 @@ void MqttManager::publishStatus() {
         doc["lon"] = _time.getLon();
     }
 
-    char buf[384];
+    // Per-zone status so web dashboard can show running state
+    JsonArray zonesArr = doc["zones"].to<JsonArray>();
+    for (uint8_t i = 1; i <= MAX_ZONES; i++) {
+        const Zone* z = _zones.getZone(i);
+        if (!z) continue;
+        JsonObject zo = zonesArr.add<JsonObject>();
+        zo["id"]      = z->id;
+        zo["status"]  = (z->status == ZoneStatus::RUNNING) ? "running" : "idle";
+        zo["runtime"] = z->runtimeSeconds;
+    }
+
+    char buf[512];
     size_t len = serializeJson(doc, buf, sizeof(buf));
     _client.publish(_topicStatus, (const uint8_t*)buf, len, false);
 }

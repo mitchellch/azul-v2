@@ -13,14 +13,20 @@ const ZONE_COLORS: Record<number, string> = {
   5: '#22c55e', 6: '#3b82f6', 7: '#6366f1', 8: '#a855f7',
 };
 
-const DURATION_OPTIONS = [
-  { label: '15s', value: 15 },
-  { label: '30s', value: 30 },
-  { label: '1m',  value: 60 },
-  { label: '5m',  value: 300 },
-  { label: '10m', value: 600 },
-  { label: '30m', value: 1800 },
-];
+// Piecewise slider: 0–25 = 5s–60s, 25–100 = 1m–60m
+function sliderToSeconds(pos: number): number {
+  if (pos <= 25) return (Math.round((pos / 25) * 11) + 1) * 5;
+  return (Math.round(((pos - 25) / 75) * 59) + 1) * 60;
+}
+function secondsToSlider(secs: number): number {
+  if (secs <= 60) return ((Math.round(secs / 5) - 1) / 11) * 25;
+  return 25 + ((Math.round(secs / 60) - 1) / 59) * 75;
+}
+function formatDuration(secs: number): string {
+  if (secs < 60)       return `${secs}s`;
+  if (secs % 60 === 0) return `${secs / 60}m`;
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
 
 const TABS = ['Zones', 'Schedules', 'Logs'] as const;
 type Tab = typeof TABS[number];
@@ -46,8 +52,7 @@ export default function ControllerPage() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
-  const [duration, setDuration]   = useState(60);
-  const [pendingZone, setPendingZone] = useState<number | null>(null);
+  const [duration, setDuration] = useState(60);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const apiFetch = useCallback(async (path: string, opts?: RequestInit) => {
@@ -68,7 +73,7 @@ export default function ControllerPage() {
       .finally(() => setLoading(false));
   }, [mac, apiFetch]);
 
-  // SSE for live zone status
+  // SSE for device status + periodic zone poll
   useEffect(() => {
     const es = new EventSource(`/api/stream/${mac}`);
     es.onmessage = (e) => {
@@ -78,13 +83,22 @@ export default function ControllerPage() {
           setDeviceStatus({ firmware: data.device.firmware, uptime_seconds: data.device.uptime_seconds });
         }
         if (data.type === 'status') {
-          if (data.uptime_seconds) setDeviceStatus(prev => ({ ...prev, ...data }));
+          if (data.uptime_seconds) setDeviceStatus(prev => ({ ...prev, uptime_seconds: data.uptime_seconds }));
+          // Zone status from MQTT payload (firmware now includes per-zone data)
+          if (Array.isArray(data.zones)) {
+            setZones(prev => prev.map(z => {
+              const u = (data.zones as any[]).find((x: any) => x.id === z.number);
+              if (!u) return z;
+              if (z.status === 'pending' && u.status === 'idle') return z; // wait for running
+              return { ...z, status: u.status, runtimeSeconds: u.runtime ?? 0 };
+            }));
+          }
         }
       } catch {}
     };
     es.onerror = () => es.close();
     return () => es.close();
-  }, [mac]);
+  }, [mac, apiFetch]);
 
   // 1s countdown for running zones
   useEffect(() => {
@@ -99,19 +113,12 @@ export default function ControllerPage() {
   }, []);
 
   async function startZone(number: number) {
-    setPendingZone(number);
+    // Optimistic update — SSE will deliver the real state when controller responds
     setZones(prev => prev.map(z => z.number === number ? { ...z, status: 'pending', runtimeSeconds: duration } : z));
     await fetch(`/api/proxy/devices/${mac}/zones/${number}/start`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ duration }),
     });
-    setTimeout(async () => {
-      const updated = await apiFetch(`/devices/${mac}/zones`);
-      setZones(updated.map((z: Zone & { status?: string; runtimeSeconds?: number }) => ({
-        ...z, status: z.status ?? 'idle', runtimeSeconds: z.runtimeSeconds ?? 0,
-      })));
-      setPendingZone(null);
-    }, 2000);
   }
 
   async function stopZone(number: number) {
@@ -183,56 +190,58 @@ export default function ControllerPage() {
 
       {tab === 'Zones' && (
         <>
-          {/* Duration picker */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-gray-500 font-medium">Duration:</span>
-            {DURATION_OPTIONS.map(opt => (
-              <button key={opt.value} onClick={() => setDuration(opt.value)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                  duration === opt.value
-                    ? 'bg-[#1a56db] text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}>
-                {opt.label}
-              </button>
-            ))}
+          {/* Duration slider */}
+          <div className="bg-white rounded-xl shadow-sm px-5 py-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-500 font-medium">Duration</span>
+              <span className="text-lg font-bold text-[#1a56db]">{formatDuration(duration)}</span>
+            </div>
+            <input type="range" min="0" max="100" step="1"
+              value={secondsToSlider(duration)}
+              onChange={e => setDuration(sliderToSeconds(Number(e.target.value)))}
+              className="w-full accent-[#1a56db]"
+            />
+            <div className="relative text-xs text-gray-400 mt-1 h-4">
+              <span className="absolute" style={{ left: '0%' }}>5s</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '12%' }}>30s</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '25%' }}>1m</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '50%' }}>15m</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '75%' }}>30m</span>
+              <span className="absolute -translate-x-full" style={{ left: '100%' }}>60m</span>
+            </div>
           </div>
+
+          {/* Instruction */}
+          <p className="text-sm text-gray-400 mb-3">
+            {anyRunning ? 'Click a running zone to stop it.' : 'Click a zone to run it for the selected duration.'}
+          </p>
 
           {/* Zone grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {zones.map(z => {
               const isRunning = z.status === 'running';
               const isPending = z.status === 'pending';
-              const isActive  = isRunning || isPending;
               return (
                 <div key={z.id}
-                  className={`bg-white rounded-xl shadow-sm p-4 transition-all ${
-                    isRunning ? 'ring-2 ring-green-400' : isPending ? 'ring-2 ring-amber-400' : ''
+                  onClick={() => isRunning ? stopZone(z.number) : (!isPending && startZone(z.number))}
+                  className={`bg-white rounded-xl shadow-sm p-4 transition-all select-none ${
+                    isRunning ? 'ring-2 ring-green-400 cursor-pointer hover:ring-red-400' :
+                    isPending ? 'ring-2 ring-amber-400 cursor-default' :
+                    'cursor-pointer hover:shadow-md active:scale-95'
                   }`}>
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full border border-gray-200 flex-shrink-0"
                       style={{ backgroundColor: ZONE_COLORS[z.number] }} />
                     <span className="font-semibold text-sm text-gray-900 truncate">
                       {z.name || `Zone ${z.number}`}
                     </span>
                   </div>
-                  <p className={`text-xs mb-3 h-4 ${
+                  <p className={`text-xs h-4 ${
                     isRunning ? 'text-green-600 font-medium' :
-                    isPending ? 'text-amber-500 font-medium' : 'text-gray-400'
+                    isPending ? 'text-amber-500 font-medium' : 'text-transparent'
                   }`}>
-                    {isRunning ? `▶ ${formatRuntime(z.runtimeSeconds)}` : isPending ? '… Pending' : 'Tap to run'}
+                    {isRunning ? `▶ ${formatRuntime(z.runtimeSeconds)}` : isPending ? '…' : '.'}
                   </p>
-                  {isActive ? (
-                    <button onClick={() => stopZone(z.number)}
-                      className="w-full bg-red-50 text-red-600 text-xs font-semibold py-1.5 rounded hover:bg-red-100 transition-colors">
-                      ■ Stop
-                    </button>
-                  ) : (
-                    <button onClick={() => startZone(z.number)}
-                      className="w-full bg-blue-50 text-[#1a56db] text-xs font-semibold py-1.5 rounded hover:bg-blue-100 transition-colors">
-                      ▶ Run
-                    </button>
-                  )}
                 </div>
               );
             })}

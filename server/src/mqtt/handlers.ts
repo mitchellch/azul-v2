@@ -13,7 +13,7 @@ export async function handleDeviceStatus(mac: string, data: Record<string, unkno
       where: { mac },
       data:  { firmware, ipAddress, online: true, lastSeenAt: now },
     });
-    // Forward to any connected SSE clients for this device
+    // Forward to SSE clients — include zone array if present
     sseRegistry.emit(mac, { type: 'status', ...data, online: true, lastSeenAt: now });
   } catch (err: any) {
     if (err.code === 'P2025') {
