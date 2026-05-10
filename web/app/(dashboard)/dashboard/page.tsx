@@ -1,19 +1,11 @@
-import { getAccessToken } from '@auth0/nextjs-auth0';
+'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 type Device = {
   id: string; mac: string; name: string;
   firmware: string | null; online: boolean; lastSeenAt: string | null;
 };
-
-async function getDevices(accessToken: string): Promise<Device[]> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/devices`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) return [];
-  return res.json();
-}
 
 function formatLastSeen(ts: string | null): string {
   if (!ts) return 'Never connected';
@@ -24,9 +16,26 @@ function formatLastSeen(ts: string | null): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-export default async function DashboardPage() {
-  const { accessToken } = await getAccessToken();
-  const devices = await getDevices(accessToken!);
+export default function DashboardPage() {
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+
+  useEffect(() => {
+    fetch('/api/proxy/devices')
+      .then(r => r.ok ? r.json() : Promise.reject(`Error ${r.status}`))
+      .then(setDevices)
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="flex justify-center py-20">
+      <div className="w-6 h-6 border-2 border-[#1a56db] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (error) return <div className="text-red-500 text-center py-10">{error}</div>;
 
   return (
     <div>
@@ -34,7 +43,7 @@ export default async function DashboardPage() {
       {devices.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <p className="text-gray-500 font-medium text-lg">No controllers yet.</p>
-          <p className="text-gray-400 text-sm mt-2">Add one from the Azul mobile app.</p>
+          <p className="text-gray-400 text-sm mt-2">Register one from the Azul mobile app → Settings → Register with Cloud.</p>
         </div>
       ) : (
         <div className="grid gap-3">
