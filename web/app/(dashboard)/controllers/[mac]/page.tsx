@@ -278,10 +278,22 @@ export default function ControllerPage() {
             />
           ) : (
             <>
+              {/* Intro */}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 mb-5 text-sm text-blue-900 space-y-1.5">
+                <p className="font-semibold">About Schedules</p>
+                <p>A schedule defines when your zones run automatically. You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each.</p>
+                <p>Only one schedule is active at a time. Schedules must not have overlapping date ranges — the controller will reject overlaps.</p>
+                <p>Common use: one schedule for summer, one for winter, one for a specific season or event.</p>
+              </div>
               <div className="flex justify-end mb-4">
                 <button onClick={() => setEditingSchedule('new')}
-                  className="px-4 py-2 bg-[#1a56db] text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                  + New Schedule
+                  disabled={schedules.length >= 5}
+                  className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                    schedules.length >= 5
+                      ? 'bg-gray-100 text-gray-400 cursor-default'
+                      : 'bg-[#1a56db] text-white hover:bg-blue-700'
+                  }`}>
+                  {schedules.length >= 5 ? 'Schedule limit reached (5/5)' : '+ New Schedule'}
                 </button>
               </div>
               <div className="space-y-3">
