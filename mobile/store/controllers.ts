@@ -9,8 +9,10 @@ export type Controller = {
   ownerSub: string;    // Auth0 sub — used as auth_token in BLE commands
   claimedAt: number;   // Unix timestamp ms
   lastSeen?: number;   // Unix timestamp ms of last successful connection
-  paused?: boolean;           // true when schedules are suspended
-  pausedScheduleUuid?: string; // uuid to restore when unpaused
+  paused?: boolean;
+  pausedScheduleUuid?: string;
+  cloudId?: string;    // Backend Device.id after registering with cloud
+  mac?: string;        // Device MAC address (from BLE deviceId on Android)
 };
 
 type ControllerStore = {

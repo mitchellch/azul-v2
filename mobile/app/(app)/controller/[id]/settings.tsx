@@ -7,6 +7,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { useControllerConnection } from '@/context/ControllerConnection';
 import { useControllerStore } from '@/store/controllers';
+import { claimDevice } from '@/services/cloudApi';
 
 type TimeData = {
   epoch: number; synced: boolean;
@@ -31,9 +32,10 @@ export default function SettingsScreen() {
   const ctrl = useControllerStore(s => s.controllers.find(c => c.id === id));
   const { updateController } = useControllerStore();
 
-  const [loading, setLoading]     = useState(true);
-  const [syncing, setSyncing]     = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [syncing, setSyncing]       = useState(false);
   const [savingWifi, setSavingWifi] = useState(false);
+  const [registeringCloud, setRegisteringCloud] = useState(false);
   const [timeData, setTimeData]   = useState<TimeData | null>(null);
   const [status, setStatus]       = useState<StatusData | null>(null);
 
@@ -185,6 +187,44 @@ export default function SettingsScreen() {
               <Text style={styles.nameText}>{ctrl?.name ?? 'Azul Controller'}</Text>
               <Text style={styles.editChevron}>✏</Text>
             </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Cloud registration */}
+        <Text style={styles.sectionHeader}>Cloud</Text>
+        <View style={styles.card}>
+          {ctrl?.cloudId ? (
+            <View style={styles.nameRow}>
+              <Text style={{ fontSize: 14, color: '#16a34a', fontWeight: '500' }}>✓ Registered with cloud</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.nameRow}>
+                <Text style={{ fontSize: 14, color: '#6b7280' }}>Not registered — web access unavailable</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.button, registeringCloud && styles.buttonDisabled]}
+                disabled={registeringCloud}
+                onPress={async () => {
+                  if (!ctrl) return;
+                  setRegisteringCloud(true);
+                  try {
+                    const mac = ctrl.mac ?? ctrl.deviceId;
+                    const device = await claimDevice(mac, ctrl.name);
+                    updateController(ctrl.deviceId, { cloudId: device.id, mac });
+                    Alert.alert('Registered', 'Controller is now linked to your cloud account.');
+                  } catch (e: any) {
+                    Alert.alert('Error', e?.message ?? 'Registration failed. Make sure the backend is running.');
+                  } finally {
+                    setRegisteringCloud(false);
+                  }
+                }}
+              >
+                {registeringCloud
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.buttonText}>Register with Cloud</Text>}
+              </TouchableOpacity>
+            </>
           )}
         </View>
 

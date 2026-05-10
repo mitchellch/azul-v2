@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { connect, disconnect, readPin, sendCommand } from '@/services/ble';
+import { claimDevice } from '@/services/cloudApi';
 import { Device } from 'react-native-ble-plx';
 import { useAuthStore } from '@/store/auth';
 import { useControllerStore } from '@/store/controllers';
@@ -48,13 +49,21 @@ export default function AdoptScreen() {
             await sendCommand(device, 'get_status', undefined, user.sub);
             // Success — we are the owner, re-add without PIN
             setStep('claiming');
+            const ctrlName = deviceName ?? 'Azul Controller';
+            let cloudId: string | undefined;
+            try {
+              const device = await claimDevice(deviceId, ctrlName);
+              cloudId = device.id;
+            } catch { /* backend unavailable */ }
             addController({
               id: uuid(),
               deviceId,
-              name: deviceName ?? 'Azul Controller',
+              mac: deviceId,
+              name: ctrlName,
               ownerSub: user.sub,
               claimedAt: Date.now(),
               lastSeen: Date.now(),
+              cloudId,
             });
             router.replace('/(app)/home');
             return;
@@ -83,13 +92,26 @@ export default function AdoptScreen() {
     try {
       setStep('claiming');
       await sendCommand(deviceRef.current, 'claim', { pin, owner_sub: user.sub });
+
+      const ctrlName = deviceName ?? 'Azul Controller';
+      const controllerId = uuid();
+
+      // Register with backend (best-effort — BLE claim already succeeded)
+      let cloudId: string | undefined;
+      try {
+        const device = await claimDevice(deviceId, ctrlName);
+        cloudId = device.id;
+      } catch { /* offline or backend unavailable — local-only is fine */ }
+
       addController({
-        id: uuid(),
+        id: controllerId,
         deviceId,
-        name: deviceName ?? 'Azul Controller',
+        mac: deviceId, // on Android, BLE deviceId is the MAC address
+        name: ctrlName,
         ownerSub: user.sub,
         claimedAt: Date.now(),
         lastSeen: Date.now(),
+        cloudId,
       });
       router.replace('/(app)/home');
     } catch (e: any) {
