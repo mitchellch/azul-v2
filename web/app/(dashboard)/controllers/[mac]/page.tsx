@@ -86,15 +86,21 @@ export default function ControllerPage() {
         }
         if (data.type === 'status') {
           if (data.uptime_seconds) setDeviceStatus(prev => ({ ...prev, uptime_seconds: data.uptime_seconds }));
-          // Zone status from MQTT payload (firmware now includes per-zone data)
           if (Array.isArray(data.zones)) {
             setZones(prev => prev.map(z => {
               const u = (data.zones as any[]).find((x: any) => x.id === z.number);
               if (!u) return z;
-              if (z.status === 'pending' && u.status === 'idle') return z; // wait for running
+              if (z.status === 'pending' && u.status === 'idle') return z;
               return { ...z, status: u.status, runtimeSeconds: u.runtime ?? 0 };
             }));
           }
+        }
+        // Auto-refresh schedules when controller syncs them to the backend
+        if (data.type === 'schedules_synced') {
+          fetch(`/api/proxy/devices/${mac}/schedules`)
+            .then(r => r.ok ? r.json() : null)
+            .then(s => { if (s) setSchedules(s); })
+            .catch(() => {});
         }
       } catch {}
     };
