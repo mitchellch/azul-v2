@@ -25,6 +25,12 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
     return;
   }
 
+  // Block M2M / client-credentials tokens from creating user records
+  if (sub.endsWith('@clients')) {
+    res.status(403).json({ error: 'Machine tokens cannot access user endpoints' });
+    return;
+  }
+
   try {
     const user = await db.user.upsert({
       where:  { auth0Sub: sub },
