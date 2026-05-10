@@ -66,31 +66,30 @@ function formatDur(secs: number): string {
   return `${m}m`;
 }
 
-// Piecewise: 0–25 = 1m–60m, 25–100 = 1h–4h
+// Piecewise: 0–25 = 1m–60m (1-min steps), 25–100 = 1h–4h (15-min steps)
+// Upper range: 12 quarter-hours from 1h to 4h → 13 values (0..12)
 function sliderToSecs(pos: number): number {
   if (pos <= 25) {
     const mins = Math.round((pos / 25) * 59) + 1; // 1..60
     return mins * 60;
   }
-  const hours = 1 + Math.round(((pos - 25) / 75) * 3); // 1..4 hours
-  return hours * 3600;
+  const quarters = Math.round(((pos - 25) / 75) * 12); // 0..12 quarter-hours above 1h
+  return 3600 + quarters * 900; // 1h, 1h15, 1h30 ... 4h
 }
 function secsToSlider(secs: number): number {
   if (secs <= 3600) return ((secs / 60 - 1) / 59) * 25;
-  return 25 + ((secs / 3600 - 1) / 3) * 75;
+  const quarters = (secs - 3600) / 900; // 0..12
+  return 25 + (quarters / 12) * 75;
 }
 
-// Label positions computed from secsToSlider()
-// secsToSlider(300)=1.69, secsToSlider(900)=5.08, secsToSlider(1800)=10.17,
-// secsToSlider(3600)=25, secsToSlider(7200)=50, secsToSlider(10800)=75
 const DUR_LABELS = [
-  { label: '5m',  pos: 1.69 },
-  { label: '15m', pos: 5.08 },
-  { label: '30m', pos: 10.17 },
-  { label: '1h',  pos: 25 },
-  { label: '2h',  pos: 50 },
-  { label: '3h',  pos: 75 },
-  { label: '4h',  pos: 100 },
+  { label: '5m',   pos: secsToSlider(300) },
+  { label: '15m',  pos: secsToSlider(900) },
+  { label: '30m',  pos: secsToSlider(1800) },
+  { label: '1h',   pos: 25 },
+  { label: '2h',   pos: secsToSlider(7200) },
+  { label: '3h',   pos: secsToSlider(10800) },
+  { label: '4h',   pos: 100 },
 ];
 
 interface Props {
@@ -133,9 +132,34 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
     setS(prev => { const runs = [...prev.runs]; runs[i] = { ...runs[i], ...patch }; return { ...prev, runs }; });
   }
 
+  function findOverlap(): string | null {
+    for (let i = 0; i < s.runs.length; i++) {
+      for (let j = i + 1; j < s.runs.length; j++) {
+        const a = s.runs[i], b = s.runs[j];
+        if (a.zone_id !== b.zone_id) continue;
+        // Only check runs that share at least one day (or both use interval)
+        const useIntervalA = (a.interval_days ?? 1) > 1;
+        const useIntervalB = (b.interval_days ?? 1) > 1;
+        if (!useIntervalA && !useIntervalB && !(a.day_mask & b.day_mask)) continue;
+        // Check time overlap: a starts before b ends AND b starts before a ends
+        const aStart = a.hour * 60 + a.minute;
+        const aEnd   = aStart + Math.ceil(a.duration_seconds / 60);
+        const bStart = b.hour * 60 + b.minute;
+        const bEnd   = bStart + Math.ceil(b.duration_seconds / 60);
+        if (aStart < bEnd && bStart < aEnd) {
+          const zoneName = zoneNames[a.zone_id] ?? `Zone ${a.zone_id}`;
+          return `${zoneName} has two overlapping runs on the same day.`;
+        }
+      }
+    }
+    return null;
+  }
+
   async function handleSave() {
     if (!s.name.trim()) { setError('Name required'); return; }
     if (!s.runs.length) { setError('At least one zone schedule required'); return; }
+    const overlap = findOverlap();
+    if (overlap) { setError(overlap); return; }
     setSaving(true); setError('');
     try { await onSave(s); }
     catch (e: any) { setError(e.message); setSaving(false); }
@@ -245,7 +269,11 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
           <div className="space-y-3">
             {[...s.runs]
               .map((run, i) => ({ run, i }))
-              .sort((a, b) => a.run.zone_id - b.run.zone_id)
+              .sort((a, b) =>
+                a.run.zone_id !== b.run.zone_id
+                  ? a.run.zone_id - b.run.zone_id
+                  : (a.run.hour * 60 + a.run.minute) - (b.run.hour * 60 + b.run.minute)
+              )
               .map(({ run, i }) => (
                 <RunEditor key={i} run={run} index={i} zoneNames={zoneNames} canRemove={s.runs.length > 1}
                   expanded={expandedRun === i}
@@ -282,10 +310,18 @@ function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onCha
 
   if (!expanded) {
     return (
-      <button type="button" onClick={onExpand}
-        className="w-full text-left border border-gray-200 rounded-xl px-4 py-3 hover:border-[#1a56db] hover:bg-blue-50 transition-colors">
-        <p className="text-sm text-gray-700 truncate">{runSummary(run, zoneNames)}</p>
-      </button>
+      <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 hover:border-gray-300 transition-colors">
+        <button type="button" onClick={onExpand} className="flex-1 text-left">
+          <p className="text-sm text-gray-700 truncate">{runSummary(run, zoneNames)}</p>
+        </button>
+        {canRemove && (
+          <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }}
+            aria-label="Remove zone schedule"
+            className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 text-base leading-none px-1">
+            ✕
+          </button>
+        )}
+      </div>
     );
   }
 
