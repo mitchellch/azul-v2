@@ -1,11 +1,14 @@
 import { db } from '../db/client';
 import { sseRegistry } from '../lib/sseRegistry';
+import { recordPing } from '../lib/connectionMonitor';
 
 // Called when a device publishes to azul/{mac}/status
 export async function handleDeviceStatus(mac: string, data: Record<string, unknown>) {
   const firmware  = data.firmware  as string | undefined;
   const ipAddress = data.ip        as string | undefined;
   const now       = new Date();
+
+  recordPing(mac);
 
   try {
     // Try to update an existing claimed device first

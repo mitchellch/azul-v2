@@ -4,6 +4,7 @@ import { mqttClient } from '../mqtt/client';
 import { assertDeviceAccess } from '../lib/deviceAccess';
 import { sseRegistry } from '../lib/sseRegistry';
 import { HttpError } from '../middleware/errorHandler';
+import { getConnectionStatus } from '../lib/connectionMonitor';
 import { z } from 'zod';
 
 export const devicesRouter = Router();
@@ -128,6 +129,15 @@ devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Res
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     mqttClient.publish(req.params.mac, 'zone/stop', { zone: zoneNumber });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/:mac/connection-status — MQTT connection health grade
+devicesRouter.get('/:mac/connection-status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await assertDeviceAccess(req.params.mac, req.user!.id);
+    const status = getConnectionStatus(req.params.mac);
+    res.json({ mac: req.params.mac, ...status });
   } catch (err) { next(err); }
 });
 
