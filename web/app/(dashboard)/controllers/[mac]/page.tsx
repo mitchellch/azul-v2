@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
 
 type Zone      = { id: string; number: number; name: string };
 type ZoneLive  = Zone & { status: 'idle' | 'running' | 'pending'; runtimeSeconds: number };
-type Schedule  = { uuid: string; name: string; start_date: string; end_date: string | null; active: boolean; runs: unknown[] };
+// Schedule type imported from ScheduleEditor
 type LogEntry  = { id: string; zoneNumber: number; startedAt: string; durationSeconds: number; source: string };
 type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?: boolean };
 
@@ -28,7 +29,7 @@ function formatDuration(secs: number): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-const TABS = ['Zones', 'Schedules', 'Logs'] as const;
+const TABS = ['Schedules', 'Zones', 'Logs'] as const;
 type Tab = typeof TABS[number];
 
 function formatRuntime(secs: number): string {
@@ -45,9 +46,10 @@ function formatUptime(secs: number): string {
 
 export default function ControllerPage() {
   const { mac } = useParams<{ mac: string }>();
-  const [tab, setTab]             = useState<Tab>('Zones');
+  const [tab, setTab]             = useState<Tab>('Schedules');
   const [zones, setZones]         = useState<ZoneLive[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);
   const [logs, setLogs]           = useState<LogEntry[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [loading, setLoading]     = useState(true);
@@ -141,6 +143,31 @@ export default function ControllerPage() {
     setSchedules(updated);
   }
 
+  async function saveSchedule(s: Schedule) {
+    const method = s.uuid ? 'PUT' : 'POST';
+    const url    = s.uuid
+      ? `/api/proxy/devices/${mac}/schedules/${s.uuid}`
+      : `/api/proxy/devices/${mac}/schedules`;
+    const res = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(s),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Save failed (${res.status})`);
+    }
+    const updated = await apiFetch(`/devices/${mac}/schedules`);
+    setSchedules(updated);
+    setEditingSchedule(null);
+  }
+
+  async function deleteSchedule(uuid: string) {
+    if (!confirm('Delete this schedule? This cannot be undone.')) return;
+    await fetch(`/api/proxy/devices/${mac}/schedules/${uuid}`, { method: 'DELETE' });
+    const updated = await apiFetch(`/devices/${mac}/schedules`);
+    setSchedules(updated);
+  }
+
   async function loadLogs() {
     const data = await apiFetch(`/devices/${mac}/log?limit=50`);
     setLogs(data);
@@ -158,15 +185,6 @@ export default function ControllerPage() {
 
   return (
     <div>
-      {/* Device status bar */}
-      {deviceStatus.firmware && (
-        <div className="flex items-center gap-4 mb-5 text-sm text-gray-400">
-          <span>v{deviceStatus.firmware}</span>
-          {deviceStatus.uptime_seconds && <span>Up {formatUptime(deviceStatus.uptime_seconds)}</span>}
-          {anyRunning && <span className="text-green-600 font-medium">● Zones running</span>}
-        </div>
-      )}
-
       {/* Tabs + Stop All */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex gap-1 bg-gray-200 rounded-lg p-1">
@@ -203,10 +221,10 @@ export default function ControllerPage() {
             />
             <div className="relative text-xs text-gray-400 mt-1 h-4">
               <span className="absolute" style={{ left: '0%' }}>5s</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '12%' }}>30s</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '11.4%' }}>30s</span>
               <span className="absolute -translate-x-1/2" style={{ left: '25%' }}>1m</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '50%' }}>15m</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '75%' }}>30m</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '42.8%' }}>15m</span>
+              <span className="absolute -translate-x-1/2" style={{ left: '61.9%' }}>30m</span>
               <span className="absolute -translate-x-full" style={{ left: '100%' }}>60m</span>
             </div>
           </div>
@@ -250,30 +268,62 @@ export default function ControllerPage() {
       )}
 
       {tab === 'Schedules' && (
-        <div className="space-y-3">
-          {schedules.length === 0 && (
-            <div className="bg-white rounded-xl shadow-sm p-10 text-center">
-              <p className="text-gray-400">No schedules. Create one from the mobile app.</p>
-            </div>
-          )}
-          {schedules.map(s => (
-            <div key={s.uuid} className="bg-white rounded-xl shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-gray-900">{s.name}</p>
-                <p className="text-sm text-gray-400">
-                  {s.start_date} → {s.end_date ?? 'open-ended'} · {(s.runs as unknown[]).length} zone{(s.runs as unknown[]).length !== 1 ? 's' : ''}
-                </p>
+        <div>
+          {editingSchedule !== null ? (
+            <ScheduleEditor
+              schedule={editingSchedule === 'new' ? undefined : editingSchedule}
+              zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
+              onSave={saveSchedule}
+              onCancel={() => setEditingSchedule(null)}
+            />
+          ) : (
+            <>
+              <div className="flex justify-end mb-4">
+                <button onClick={() => setEditingSchedule('new')}
+                  className="px-4 py-2 bg-[#1a56db] text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                  + New Schedule
+                </button>
               </div>
-              <button onClick={() => toggleSchedule(s.uuid, s.active)}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
-                  s.active
-                    ? 'bg-blue-100 text-[#1a56db] hover:bg-blue-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}>
-                {s.active ? '● Active' : 'Activate'}
-              </button>
-            </div>
-          ))}
+              <div className="space-y-3">
+                {schedules.length === 0 && (
+                  <div className="bg-white rounded-xl shadow-sm p-10 text-center">
+                    <p className="text-gray-500 font-medium mb-2">No schedules yet.</p>
+                    <button onClick={() => setEditingSchedule('new')}
+                      className="text-[#1a56db] text-sm font-semibold hover:underline">
+                      Create your first schedule →
+                    </button>
+                  </div>
+                )}
+                {schedules.map(s => (
+                  <div key={s.uuid} className="bg-white rounded-xl shadow-sm p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0 mr-4">
+                        <p className="font-semibold text-gray-900">{s.name}</p>
+                        <p className="text-sm text-gray-400 mt-0.5">
+                          {s.start_date} → {s.end_date ?? 'open-ended'}
+                          {' · '}{(s.runs as unknown[]).length} zone schedule{(s.runs as unknown[]).length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => setEditingSchedule(s)}
+                          className="text-xs text-gray-400 hover:text-gray-700 px-2 py-1">✏ Edit</button>
+                        <button onClick={() => deleteSchedule(s.uuid!)}
+                          className="text-xs text-red-400 hover:text-red-600 px-2 py-1">🗑</button>
+                        <button onClick={() => toggleSchedule(s.uuid!, s.active ?? false)}
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
+                            s.active
+                              ? 'bg-blue-100 text-[#1a56db] hover:bg-blue-200'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}>
+                          {s.active ? '● Active' : 'Activate'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -299,6 +349,14 @@ export default function ControllerPage() {
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Firmware info footer */}
+      {deviceStatus.firmware && (
+        <div className="mt-8 pt-4 border-t border-gray-200 flex items-center gap-4 text-xs text-gray-400">
+          <span>Firmware: {deviceStatus.firmware}</span>
+          {deviceStatus.uptime_seconds && <span>Uptime: {formatUptime(deviceStatus.uptime_seconds)}</span>}
         </div>
       )}
     </div>
