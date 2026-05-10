@@ -19,6 +19,29 @@ export type Schedule = {
   runs: ScheduleRun[];
 };
 
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
+// Days in each month (non-leap; scheduler handles year-end edge cases)
+const DAYS_IN_MONTH = [31,29,31,30,31,30,31,31,30,31,30,31];
+
+function daysForMonth(month: number) {
+  return Array.from({ length: DAYS_IN_MONTH[month - 1] }, (_, i) => i + 1);
+}
+
+// Parse "MM-DD" string into { month, day }
+function parseMD(md: string): { month: number; day: number } {
+  const [m, d] = md.split('-').map(Number);
+  return { month: m || 1, day: d || 1 };
+}
+
+// Format { month, day } to "MM-DD"
+function formatMD(month: number, day: number): string {
+  return `${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+
 const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const DAY_BITS  = [1, 2, 4, 8, 16, 32, 64];
 
@@ -160,38 +183,51 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
         {/* Dates */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-              {anyYear ? 'Start (month & day)' : 'Start Date'}
+            <label htmlFor="start-date" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Start
             </label>
-            <input type={anyYear ? 'text' : 'date'}
-              placeholder={anyYear ? 'MM-DD  e.g. 05-01' : ''}
-              pattern={anyYear ? '\\d{2}-\\d{2}' : undefined}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
-              value={anyYear ? s.start_date.slice(5) : s.start_date}
-              onChange={e => setS(p => ({
-                ...p,
-                start_date: anyYear ? `${YEAR_PLACEHOLDER}-${e.target.value}` : e.target.value,
-              }))} />
+            {anyYear ? (
+              <MonthDayPicker
+                id="start-date"
+                value={s.start_date.slice(5)}
+                onChange={md => setS(p => ({ ...p, start_date: `${YEAR_PLACEHOLDER}-${md}` }))}
+              />
+            ) : (
+              <input id="start-date" type="date"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+                value={s.start_date}
+                onChange={e => setS(p => ({ ...p, start_date: e.target.value }))} />
+            )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-              {anyYear ? 'End (month & day, optional)' : 'End Date'}
+            <label htmlFor="end-date" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              End <span className="font-normal text-gray-400">(optional)</span>
             </label>
-            <div className="flex gap-2">
-              <input type={anyYear ? 'text' : 'date'}
-                placeholder={anyYear ? 'MM-DD  e.g. 09-30' : ''}
-                pattern={anyYear ? '\\d{2}-\\d{2}' : undefined}
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
-                value={anyYear ? (s.end_date?.slice(5) ?? '') : (s.end_date ?? '')}
-                onChange={e => {
-                  const v = e.target.value;
-                  setS(p => ({ ...p, end_date: v ? (anyYear ? `${YEAR_PLACEHOLDER}-${v}` : v) : null }));
-                }} />
-              {s.end_date && (
-                <button onClick={() => setS(p => ({ ...p, end_date: null }))}
-                  className="px-2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
-              )}
-            </div>
+            {anyYear ? (
+              <div className="flex items-center gap-2">
+                <MonthDayPicker
+                  id="end-date"
+                  value={s.end_date?.slice(5) ?? ''}
+                  placeholder
+                  onChange={md => setS(p => ({ ...p, end_date: md ? `${YEAR_PLACEHOLDER}-${md}` : null }))}
+                />
+                {s.end_date && (
+                  <button aria-label="Clear end date" onClick={() => setS(p => ({ ...p, end_date: null }))}
+                    className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input id="end-date" type="date"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+                  value={s.end_date ?? ''}
+                  onChange={e => setS(p => ({ ...p, end_date: e.target.value || null }))} />
+                {s.end_date && (
+                  <button aria-label="Clear end date" onClick={() => setS(p => ({ ...p, end_date: null }))}
+                    className="px-2 text-gray-400 hover:text-gray-600">✕</button>
+                )}
+              </div>
+            )}
             {!s.end_date && <p className="text-xs text-gray-400 mt-1">Leave blank — runs all season</p>}
           </div>
         </div>
@@ -319,6 +355,49 @@ function RunEditor({ run, index, zoneNames, canRemove, onChange, onRemove }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Accessible month + day selector using native <select> elements
+function MonthDayPicker({ id, value, onChange, placeholder }: {
+  id?: string;
+  value: string;       // "MM-DD" or "" for unset
+  onChange: (md: string | null) => void;
+  placeholder?: boolean;
+}) {
+  const { month, day } = value ? parseMD(value) : { month: 0, day: 0 };
+
+  function handleMonth(m: number) {
+    const clampedDay = m > 0 ? Math.min(day || 1, DAYS_IN_MONTH[m - 1]) : 0;
+    if (m === 0) { onChange(null); return; }
+    onChange(formatMD(m, clampedDay || 1));
+  }
+
+  function handleDay(d: number) {
+    if (month === 0) return;
+    onChange(formatMD(month, d));
+  }
+
+  const selectClass = "border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db] bg-white";
+
+  return (
+    <div className="flex gap-2">
+      <select id={id} aria-label="Month" value={month} onChange={e => handleMonth(Number(e.target.value))}
+        className={`flex-1 ${selectClass}`}>
+        {placeholder && <option value={0}>Month</option>}
+        {MONTHS.map((name, i) => (
+          <option key={i + 1} value={i + 1}>{name}</option>
+        ))}
+      </select>
+      <select aria-label="Day" value={day} onChange={e => handleDay(Number(e.target.value))}
+        disabled={month === 0}
+        className={`w-20 ${selectClass} ${month === 0 ? 'opacity-40' : ''}`}>
+        {placeholder && <option value={0}>Day</option>}
+        {daysForMonth(month || 1).map(d => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
     </div>
   );
 }
