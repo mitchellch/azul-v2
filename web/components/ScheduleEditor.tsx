@@ -66,20 +66,20 @@ function formatDur(secs: number): string {
   return `${m}m`;
 }
 
-// Piecewise: 0–25 = 1m–60m (1-min steps), 25–100 = 1h–4h (15-min steps)
-// Upper range: 12 quarter-hours from 1h to 4h → 13 values (0..12)
+// Piecewise: 0–25 = 1m–60m (1-min steps), 25–100 = 61m–240m (1-min steps)
+// Total range: 1 minute to 4 hours, all in 1-minute increments
 function sliderToSecs(pos: number): number {
   if (pos <= 25) {
-    const mins = Math.round((pos / 25) * 59) + 1; // 1..60
+    const mins = Math.round((pos / 25) * 59) + 1; // 1..60 mins
     return mins * 60;
   }
-  const quarters = Math.round(((pos - 25) / 75) * 12); // 0..12 quarter-hours above 1h
-  return 3600 + quarters * 900; // 1h, 1h15, 1h30 ... 4h
+  const mins = 60 + Math.round(((pos - 25) / 75) * 180); // 60..240 mins
+  return mins * 60;
 }
 function secsToSlider(secs: number): number {
-  if (secs <= 3600) return ((secs / 60 - 1) / 59) * 25;
-  const quarters = (secs - 3600) / 900; // 0..12
-  return 25 + (quarters / 12) * 75;
+  const mins = secs / 60;
+  if (mins <= 60) return ((mins - 1) / 59) * 25;
+  return 25 + ((mins - 60) / 180) * 75;
 }
 
 const DUR_LABELS = [

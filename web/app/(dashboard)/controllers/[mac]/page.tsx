@@ -291,8 +291,12 @@ export default function ControllerPage() {
               </div>
               <div className="space-y-3">
                 {schedules.length === 0 && (
-                  <div className="bg-white rounded-xl shadow-sm p-10 text-center">
-                    <p className="text-gray-500 font-medium mb-2">No schedules yet.</p>
+                  <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <p className="text-gray-600 font-medium mb-1">No schedules in the cloud yet.</p>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Schedules created on the mobile app live only on the controller until recreated here.
+                      Use the mobile app to see existing schedules, or create new ones below.
+                    </p>
                     <button onClick={() => setEditingSchedule('new')}
                       className="text-[#1a56db] text-sm font-semibold hover:underline">
                       Create your first schedule →
