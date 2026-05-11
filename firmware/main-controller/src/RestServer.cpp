@@ -171,9 +171,12 @@ void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
   doc["channel"]        = WiFi.channel();
   int8_t rssi           = (int8_t)WiFi.RSSI();
   int8_t noiseFloor     = rom_check_noise_floor();
+  int8_t snr            = rssi - noiseFloor;
   doc["rssi_dbm"]       = rssi;
+  doc["rssi_rating"]    = rssi >= -50 ? "Amazing" : rssi >= -70 ? "Good" : rssi >= -80 ? "Fair" : "Poor";
   doc["noise_floor_dbm"]= noiseFloor;
-  doc["snr_db"]         = (int8_t)(rssi - noiseFloor);
+  doc["snr_db"]         = snr;
+  doc["snr_rating"]     = snr > 40 ? "Excellent" : snr >= 25 ? "Very Good" : snr >= 15 ? "Good" : snr >= 10 ? "Poor" : "Very Poor";
   doc["wifi_quality"]   = constrain(2 * (rssi + 100), 0, 100);
   doc["uptime_seconds"] = millis() / 1000;
   doc["temperature_c"]  = tempC;

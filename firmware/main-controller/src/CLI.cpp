@@ -491,6 +491,21 @@ void CLI::cmdWifiSet(const char* args) {
   Serial.printf("WiFi credentials saved for '%s'. Reboot to connect.\r\n", ssid);
 }
 
+static const char* rssiRating(int8_t rssi) {
+  if (rssi >= -50) return "Amazing";
+  if (rssi >= -70) return "Good";
+  if (rssi >= -80) return "Fair";
+  return "Poor";
+}
+
+static const char* snrRating(int8_t snr) {
+  if (snr > 40)  return "Excellent";
+  if (snr >= 25) return "Very Good";
+  if (snr >= 15) return "Good";
+  if (snr >= 10) return "Poor";
+  return "Very Poor";
+}
+
 void CLI::cmdWifiStatus() {
   if (WiFi.isConnected()) {
     int8_t rssi       = (int8_t)WiFi.RSSI();
@@ -502,9 +517,9 @@ void CLI::cmdWifiStatus() {
     Serial.printf("IP Address:   %s\r\n",     WiFi.localIP().toString().c_str());
     Serial.printf("MAC:          %s\r\n",     WiFi.macAddress().c_str());
     Serial.printf("Channel:      %d\r\n",     WiFi.channel());
-    Serial.printf("Signal:       %d dBm (%d%%)\r\n", rssi, quality);
-    Serial.printf("Noise Floor:  %d dBm\r\n", noiseFloor);
-    Serial.printf("SNR:          %d dB\r\n",  snr);
+    Serial.printf("Signal:       %d dBm (%d%%) — %s\r\n", rssi, quality, rssiRating(rssi));
+    Serial.printf("Noise Floor:  %d dBm\r\n", (int)noiseFloor);
+    Serial.printf("SNR:          %d dB — %s\r\n", snr, snrRating(snr));
   } else {
     Serial.println("Not connected");
     Preferences prefs;
