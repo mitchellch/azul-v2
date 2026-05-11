@@ -53,13 +53,15 @@ export default function SettingsScreen() {
   const loadedRef = useRef(false);
 
   useEffect(() => {
+    if (isCloudMode) return;
     if (connected && !loadedRef.current) {
       loadedRef.current = true;
       load();
     }
-  }, [connected]);
+  }, [connected, isCloudMode]);
 
   async function load(): Promise<void> {
+    if (isCloudMode) return;
     setLoading(true);
     try {
       const [t, s] = await Promise.all([
