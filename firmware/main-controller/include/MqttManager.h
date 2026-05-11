@@ -44,6 +44,7 @@ private:
     uint16_t _brokerPort;
 
     unsigned long _lastConnectAttempt;
+    uint8_t       _failCount;
 
     void loadBrokerConfig();
     void reconnect();

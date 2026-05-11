@@ -296,6 +296,7 @@ void CLI::printHelp() {
   Serial.println("  schedule                  Show active schedule");
   Serial.println("  schedules                 List all stored schedules");
   Serial.println("  log [N]                   Show last N audit entries (default 20)");
+  Serial.println("  log on|off                Enable/disable background log output");
   Serial.println("  tz-get                    Show current timezone");
   Serial.println("  tz-set <+/-HH:MM>         Set timezone offset (e.g. tz-set -07:00)");
   Serial.println("  nvs-dump                  Dump all NVS config (password masked)");
@@ -603,6 +604,17 @@ void CLI::cmdSchedules() {
 }
 
 void CLI::cmdLog(const char* args) {
+  if (args && strcmp(args, "off") == 0) {
+    Logger::setVerbose(false);
+    Serial.println("Log output muted. Type 'log on' to restore.");
+    return;
+  }
+  if (args && strcmp(args, "on") == 0) {
+    Logger::setVerbose(true);
+    Serial.println("Log output enabled.");
+    return;
+  }
+
   uint16_t n = 20;
   if (args && args[0] != '\0') n = atoi(args);
   if (n == 0 || n > AUDIT_RING_SIZE) n = 20;

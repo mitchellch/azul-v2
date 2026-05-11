@@ -12,7 +12,7 @@ MqttManager* MqttManager::_instance = nullptr;
 MqttManager::MqttManager(ZoneController& zones, ZoneQueue& queue,
                          Scheduler& scheduler, TimeManager& time, AuditLog& audit)
     : _zones(zones), _queue(queue), _scheduler(scheduler), _time(time), _audit(audit),
-      _client(_wifiClient), _brokerPort(1883), _lastConnectAttempt(0)
+      _client(_wifiClient), _brokerPort(1883), _lastConnectAttempt(0), _failCount(0)
 {
     _instance = this;
     _brokerUrl[0] = '\0';
@@ -36,6 +36,7 @@ void MqttManager::loadBrokerConfig() {
 }
 
 void MqttManager::begin() {
+    _failCount = 0;
     String macStr = WiFi.macAddress();
     strlcpy(_mac, macStr.c_str(), sizeof(_mac));
 
@@ -85,16 +86,19 @@ void MqttManager::tick() {
 void MqttManager::reconnect() {
     if (!WiFi.isConnected()) return;
 
-    Serial.printf("[MQTT] Connecting to %s:%d as %s\n", _brokerUrl, _brokerPort, _clientId);
-
     if (_client.connect(_clientId)) {
-        Serial.println("[MQTT] Connected");
+        _failCount = 0;
+        Serial.printf("[MQTT] Connected to %s:%d\n", _brokerUrl, _brokerPort);
         _client.subscribe(_topicCmdSub);
         publishStatus();
         publishSchedules(); // sync all schedules to backend on connect
     } else {
-        Serial.printf("[MQTT] Connect failed, rc=%d — retry in %ds\n",
-                      _client.state(), MQTT_RECONNECT_INTERVAL_MS / 1000);
+        _failCount++;
+        // Print on first failure then once per minute (every 6 × 10s attempts)
+        if (_failCount == 1 || (_failCount % 6) == 0) {
+            Serial.printf("[MQTT] Can't reach %s:%d (rc=%d, attempt %d)\n",
+                          _brokerUrl, _brokerPort, _client.state(), _failCount);
+        }
     }
 }
 

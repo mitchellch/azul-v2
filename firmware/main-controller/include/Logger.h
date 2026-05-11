@@ -11,7 +11,11 @@ public:
   static void setReprintCallback(ReprintFn fn);
   static void log(const char* fmt, ...);
 
+  static void setVerbose(bool on);
+  static bool isVerbose();
+
 private:
   static ReprintFn _reprint;
   static SemaphoreHandle_t _mutex;
+  static bool _verbose;
 };
