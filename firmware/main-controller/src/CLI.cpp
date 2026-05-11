@@ -5,6 +5,8 @@
 #include <Preferences.h>
 #include <nvs.h>
 
+extern "C" int8_t rom_check_noise_floor();
+
 static uint8_t commonPrefixLen(const char** matches, uint8_t count) {
   if (count == 0) return 0;
   uint8_t len = strlen(matches[0]);
@@ -491,9 +493,18 @@ void CLI::cmdWifiSet(const char* args) {
 
 void CLI::cmdWifiStatus() {
   if (WiFi.isConnected()) {
-    Serial.printf("Connected to: %s\r\n", WiFi.SSID().c_str());
-    Serial.printf("IP Address:   %s\r\n", WiFi.localIP().toString().c_str());
-    Serial.printf("Signal:       %d dBm\r\n", WiFi.RSSI());
+    int8_t rssi       = (int8_t)WiFi.RSSI();
+    int8_t noiseFloor = rom_check_noise_floor();
+    int8_t snr        = rssi - noiseFloor;
+    int    quality    = constrain(2 * (rssi + 100), 0, 100);
+
+    Serial.printf("Connected to: %s\r\n",     WiFi.SSID().c_str());
+    Serial.printf("IP Address:   %s\r\n",     WiFi.localIP().toString().c_str());
+    Serial.printf("MAC:          %s\r\n",     WiFi.macAddress().c_str());
+    Serial.printf("Channel:      %d\r\n",     WiFi.channel());
+    Serial.printf("Signal:       %d dBm (%d%%)\r\n", rssi, quality);
+    Serial.printf("Noise Floor:  %d dBm\r\n", noiseFloor);
+    Serial.printf("SNR:          %d dB\r\n",  snr);
   } else {
     Serial.println("Not connected");
     Preferences prefs;

@@ -6,6 +6,8 @@
 #include <nvs.h>
 #include <Preferences.h>
 
+extern "C" int8_t rom_check_noise_floor();
+
 RestServer::RestServer(ZoneController& zones, Scheduler& scheduler,
                        AuditLog& audit, ChangeLog& changelog, TimeManager& time,
                        ZoneQueue& queue, MqttManager& mqtt)
@@ -166,6 +168,13 @@ void RestServer::handleGetStatus(AsyncWebServerRequest* req) {
   doc["ssid"]           = WiFi.SSID();
   doc["ip"]             = WiFi.localIP().toString();
   doc["mac"]            = WiFi.macAddress();
+  doc["channel"]        = WiFi.channel();
+  int8_t rssi           = (int8_t)WiFi.RSSI();
+  int8_t noiseFloor     = rom_check_noise_floor();
+  doc["rssi_dbm"]       = rssi;
+  doc["noise_floor_dbm"]= noiseFloor;
+  doc["snr_db"]         = (int8_t)(rssi - noiseFloor);
+  doc["wifi_quality"]   = constrain(2 * (rssi + 100), 0, 100);
   doc["uptime_seconds"] = millis() / 1000;
   doc["temperature_c"]  = tempC;
   doc["temperature_f"]  = tempC * 9.0f / 5.0f + 32.0f;
