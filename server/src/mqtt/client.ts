@@ -35,7 +35,7 @@ class MqttClient {
     });
 
     this.client.on('error', (err) => {
-      console.error('[MQTT] Error:', err.message);
+      console.error('[MQTT] Error:', err);
     });
 
     this.client.on('offline', () => {

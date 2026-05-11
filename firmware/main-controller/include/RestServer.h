@@ -8,12 +8,13 @@
 #include "TimeManager.h"
 #include "NvsDump.h"
 #include "ZoneQueue.h"
+#include "MqttManager.h"
 
 class RestServer {
 public:
   RestServer(ZoneController& zones, Scheduler& scheduler,
              AuditLog& audit, ChangeLog& changelog, TimeManager& time,
-             ZoneQueue& queue);
+             ZoneQueue& queue, MqttManager& mqtt);
   void begin();
 
 private:
@@ -24,6 +25,7 @@ private:
   ChangeLog&      _changelog;
   TimeManager&    _time;
   ZoneQueue&      _queue;
+  MqttManager&    _mqtt;
 
   void registerRoutes();
 
@@ -48,6 +50,9 @@ private:
   // Logs
   void handleGetLog(AsyncWebServerRequest* req);
   void handleGetChangeLog(AsyncWebServerRequest* req);
+
+  // MQTT config
+  void handleSetMqttConfig(AsyncWebServerRequest* req, JsonVariant& body);
 
   // Time
   void handleGetTime(AsyncWebServerRequest* req);

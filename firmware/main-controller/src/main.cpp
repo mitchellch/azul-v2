@@ -23,12 +23,12 @@ AuditLog       auditLog;
 ChangeLog      changeLog;
 ZoneQueue      zoneQueue(zones, auditLog);
 Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog, zoneQueue);
-RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue);
+MqttManager    mqttManager(zones, zoneQueue, scheduler, timeManager, auditLog);
+RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue, mqttManager);
 ClaimManager   claimMgr;
 BleServer      bleServer(zones, auditLog, zoneQueue, scheduler, claimMgr, timeManager);
 CLI            serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
 ZoneLed        zoneLed(zones);
-MqttManager    mqttManager(zones, zoneQueue, scheduler, timeManager, auditLog);
 
 #define BLE_NOTIFY_INTERVAL_MS    5000
 #define WIFI_CHECK_INTERVAL_MS   30000

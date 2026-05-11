@@ -35,3 +35,18 @@ export async function updateDeviceName(mac: string, name: string): Promise<void>
     body: JSON.stringify({ name }),
   });
 }
+
+export type ConnectionGrade = 'good' | 'degraded' | 'poor' | 'offline';
+
+export type ConnectionStatus = {
+  mac: string;
+  grade: ConnectionGrade;
+  lastSeen: number | null;
+  missedPings: number;
+  recommendLocalMode: boolean;
+  reason: string;
+};
+
+export async function getConnectionStatus(mac: string): Promise<ConnectionStatus> {
+  return authFetch(`/devices/${mac}/connection-status`);
+}

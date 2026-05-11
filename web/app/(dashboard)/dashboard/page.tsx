@@ -7,6 +7,23 @@ type Device = {
   firmware: string | null; online: boolean; lastSeenAt: string | null;
 };
 
+type ConnectionGrade = 'good' | 'degraded' | 'poor' | 'offline';
+
+type ConnectionStatus = {
+  grade: ConnectionGrade;
+  lastSeen: number | null;
+  reason: string;
+};
+
+type DeviceWithStatus = Device & { connectionStatus?: ConnectionStatus };
+
+const GRADE_STYLES: Record<ConnectionGrade, { dot: string; label: string; text: string }> = {
+  good:     { dot: 'bg-green-500',  label: 'Good',     text: 'text-green-600' },
+  degraded: { dot: 'bg-yellow-400', label: 'Degraded', text: 'text-yellow-600' },
+  poor:     { dot: 'bg-orange-500', label: 'Poor',     text: 'text-orange-600' },
+  offline:  { dot: 'bg-gray-300',   label: 'Offline',  text: 'text-gray-400' },
+};
+
 function formatLastSeen(ts: string | null): string {
   if (!ts) return 'Never connected';
   const diff = Date.now() - new Date(ts).getTime();
@@ -17,21 +34,34 @@ function formatLastSeen(ts: string | null): string {
 }
 
 export default function DashboardPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<DeviceWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
 
-  const fetchDevices = useCallback(() => {
-    fetch('/api/proxy/devices')
-      .then(r => r.ok ? r.json() : Promise.reject(`Error ${r.status}`))
-      .then(setDevices)
-      .catch(e => setError(String(e)))
-      .finally(() => setLoading(false));
+  const fetchDevices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/devices');
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const devs: Device[] = await res.json();
+
+      const statuses = await Promise.allSettled(
+        devs.map(d => fetch(`/api/proxy/devices/${d.mac}/connection-status`).then(r => r.json()))
+      );
+
+      setDevices(devs.map((d, i) => ({
+        ...d,
+        connectionStatus: statuses[i].status === 'fulfilled' ? statuses[i].value : undefined,
+      })));
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     fetchDevices();
-    const interval = setInterval(fetchDevices, 30_000); // refresh every 30s
+    const interval = setInterval(fetchDevices, 30_000);
     return () => clearInterval(interval);
   }, [fetchDevices]);
 
@@ -53,25 +83,29 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {devices.map(d => (
-            <Link key={d.mac} href={`/controllers/${d.mac}`}>
-              <div className="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${d.online ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <div>
-                    <p className="font-semibold text-gray-900">{d.name}</p>
-                    <p className="text-sm text-gray-400">{d.mac} · {formatLastSeen(d.lastSeenAt)}</p>
+          {devices.map(d => {
+            const grade = d.connectionStatus?.grade ?? (d.online ? 'good' : 'offline');
+            const style = GRADE_STYLES[grade];
+            return (
+              <Link key={d.mac} href={`/controllers/${d.mac}`}>
+                <div className="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${style.dot}`} />
+                    <div>
+                      <p className="font-semibold text-gray-900">{d.name}</p>
+                      <p className="text-sm text-gray-400">{d.mac} · {formatLastSeen(d.lastSeenAt)}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {d.firmware && <p className="text-xs text-gray-400 mb-0.5">{d.firmware}</p>}
+                    <span className={`text-xs font-semibold ${style.text}`}>
+                      {style.label}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  {d.firmware && <p className="text-xs text-gray-400 mb-0.5">{d.firmware}</p>}
-                  <span className={`text-xs font-semibold ${d.online ? 'text-green-600' : 'text-gray-400'}`}>
-                    {d.online ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

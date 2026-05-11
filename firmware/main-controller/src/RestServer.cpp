@@ -4,12 +4,13 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <nvs.h>
+#include <Preferences.h>
 
 RestServer::RestServer(ZoneController& zones, Scheduler& scheduler,
                        AuditLog& audit, ChangeLog& changelog, TimeManager& time,
-                       ZoneQueue& queue)
+                       ZoneQueue& queue, MqttManager& mqtt)
   : _server(80), _zones(zones), _scheduler(scheduler),
-    _audit(audit), _changelog(changelog), _time(time), _queue(queue) {}
+    _audit(audit), _changelog(changelog), _time(time), _queue(queue), _mqtt(mqtt) {}
 
 void RestServer::begin() {
   registerRoutes();
@@ -74,6 +75,11 @@ void RestServer::registerRoutes() {
     [this](AsyncWebServerRequest* r, JsonVariant& b) { handleSetTime(r, b); });
   setTimeHandler->setMethod(HTTP_PUT);
   _server.addHandler(setTimeHandler);
+
+  auto* setMqttHandler = new AsyncCallbackJsonWebHandler("/api/mqtt",
+    [this](AsyncWebServerRequest* r, JsonVariant& b) { handleSetMqttConfig(r, b); });
+  setMqttHandler->setMethod(HTTP_PUT);
+  _server.addHandler(setMqttHandler);
 
   // ---- Zones ----
   _server.on("/api/zones/stop-all", HTTP_POST, [this](AsyncWebServerRequest* r) { handleStopAll(r); });
@@ -410,6 +416,30 @@ void RestServer::handleActivateSchedule(AsyncWebServerRequest* req) {
     sendJson(req, 404, e);
     return;
   }
+  sendJson(req, 200, "{\"ok\":true}");
+}
+
+// ---------------------------------------------------------------------------
+// MQTT config
+// ---------------------------------------------------------------------------
+
+void RestServer::handleSetMqttConfig(AsyncWebServerRequest* req, JsonVariant& body) {
+  if (!body["url"].is<const char*>()) {
+    sendJson(req, 400, "{\"error\":\"url required\"}");
+    return;
+  }
+  const char* url  = body["url"].as<const char*>();
+  uint16_t    port = body["port"] | 1883;
+
+  Preferences prefs;
+  prefs.begin("mqtt", false);
+  prefs.putString("url", url);
+  prefs.putInt("port", (int)port);
+  prefs.end();
+
+  Serial.printf("[REST] MQTT config updated: %s:%d — reconnecting\n", url, port);
+  _mqtt.begin();
+
   sendJson(req, 200, "{\"ok\":true}");
 }
 

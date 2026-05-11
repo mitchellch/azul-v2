@@ -1,7 +1,10 @@
 import { Stack, useLocalSearchParams, useRouter, usePathname } from 'expo-router';
+import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { useAuthStore } from '@/store/auth';
 import { useControllerStore } from '@/store/controllers';
 import { ControllerConnectionProvider } from '@/context/ControllerConnection';
+import { getConnectionStatus } from '@/services/cloudApi';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 export const unstable_settings = { initialRouteName: 'index' };
@@ -10,6 +13,30 @@ export default function ControllerLayout() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
   const ctrl = useControllerStore(s => s.controllers.find(c => c.id === id));
+
+  useEffect(() => {
+    if (!ctrl?.mac) return;
+    getConnectionStatus(ctrl.mac).then(status => {
+      if (status.grade === 'offline') {
+        Alert.alert(
+          'Controller Offline',
+          'This controller has not been seen recently. Check its WiFi connection.',
+          [{ text: 'OK' }]
+        );
+      } else if (status.recommendLocalMode) {
+        Alert.alert(
+          'Connection Unstable',
+          `The connection to this controller is ${status.grade}. Would you like to connect locally over Bluetooth instead?`,
+          [
+            { text: 'Use Bluetooth', style: 'default', onPress: () => {} },
+            { text: 'Keep Using Cloud', style: 'cancel' },
+          ]
+        );
+      }
+    }).catch(() => {
+      // Silently ignore — connection status is best-effort
+    });
+  }, [ctrl?.mac]);
 
   if (!ctrl) {
     return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text>Controller not found.</Text></View>;
