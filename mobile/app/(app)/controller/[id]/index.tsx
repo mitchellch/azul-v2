@@ -235,9 +235,10 @@ const styles = StyleSheet.create({
   badge: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    borderWidth: 1.5, borderColor: 'transparent',
   },
-  badgeRunning: { borderWidth: 1.5, borderColor: '#16a34a' },
-  badgePending: { borderWidth: 1.5, borderColor: '#f59e0b' },
+  badgeRunning: { borderColor: '#16a34a' },
+  badgePending: { borderColor: '#f59e0b' },
   badgeHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   zoneLed:      { width: 12, height: 12, borderRadius: 6, marginRight: 7, borderWidth: 1, borderColor: '#e5e7eb', flexShrink: 0 },
   zoneName:     { fontSize: 14, fontWeight: '700', color: '#111827', flex: 1 },
