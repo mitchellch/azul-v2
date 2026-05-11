@@ -27,7 +27,7 @@ type ControllerConnectionContext = {
   setZones: React.Dispatch<React.SetStateAction<ZoneData[]>>;
 };
 
-const Ctx = createContext<ControllerConnectionContext | null>(null);
+export const Ctx = createContext<ControllerConnectionContext | null>(null);
 
 export function useControllerConnection() {
   const ctx = useContext(Ctx);

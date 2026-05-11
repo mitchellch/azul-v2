@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type ConnectionMode = 'ble' | 'cloud';
+
 export type Controller = {
   id: string;          // UUID generated at adoption time
   deviceId: string;    // BLE device ID (MAC on Android, UUID on iOS)
@@ -13,6 +15,7 @@ export type Controller = {
   pausedScheduleUuid?: string;
   cloudId?: string;    // Backend Device.id after registering with cloud
   mac?: string;        // Device MAC address (from BLE deviceId on Android)
+  connectionMode?: ConnectionMode; // defaults to 'ble' if not set
 };
 
 type ControllerStore = {

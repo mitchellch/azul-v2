@@ -50,3 +50,26 @@ export type ConnectionStatus = {
 export async function getConnectionStatus(mac: string): Promise<ConnectionStatus> {
   return authFetch(`/devices/${mac}/connection-status`);
 }
+
+export async function getDeviceZones(mac: string): Promise<unknown[]> {
+  return authFetch(`/devices/${mac}/zones`);
+}
+
+export async function getDeviceStatus(mac: string): Promise<unknown> {
+  return authFetch(`/devices/${mac}`);
+}
+
+export async function startZone(mac: string, zoneNumber: number, duration: number): Promise<void> {
+  await authFetch(`/devices/${mac}/zones/${zoneNumber}/start`, {
+    method: 'POST',
+    body: JSON.stringify({ duration }),
+  });
+}
+
+export async function stopZone(mac: string, zoneNumber: number): Promise<void> {
+  await authFetch(`/devices/${mac}/zones/${zoneNumber}/stop`, { method: 'POST' });
+}
+
+export async function stopAllZones(mac: string): Promise<void> {
+  await authFetch(`/devices/${mac}/zones/stop-all`, { method: 'POST' });
+}

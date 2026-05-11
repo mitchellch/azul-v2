@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator, StyleSheet,
-  Alert, ScrollView, TextInput, KeyboardAvoidingView, Platform,
+  Alert, ScrollView, TextInput, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { useControllerConnection } from '@/context/ControllerConnection';
 import { useControllerStore } from '@/store/controllers';
 import { claimDevice } from '@/services/cloudApi';
+import type { ConnectionMode } from '@/store/controllers';
 
 type TimeData = {
   epoch: number; synced: boolean;
@@ -26,11 +27,13 @@ type StatusData = {
 };
 
 export default function SettingsScreen() {
-  const { execCommand, connecting, connected } = useControllerConnection();
+  const connection = useControllerConnection();
+  const { execCommand, connecting, connected } = connection;
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const ctrl = useControllerStore(s => s.controllers.find(c => c.id === id));
   const { updateController } = useControllerStore();
+  const isCloudMode = (ctrl?.connectionMode ?? 'ble') === 'cloud';
 
   const [loading, setLoading]       = useState(true);
   const [syncing, setSyncing]       = useState(false);
@@ -152,7 +155,7 @@ export default function SettingsScreen() {
     return `${kb} KB`;
   }
 
-  if (connecting || loading) {
+  if (!isCloudMode && (connecting || loading)) {
     return <View style={styles.center}><ActivityIndicator size="large" color="#1a56db" /></View>;
   }
 
@@ -228,86 +231,117 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* WiFi */}
-        <Text style={styles.sectionHeader}>WiFi</Text>
+        {/* Connection mode */}
+        <Text style={styles.sectionHeader}>Connection</Text>
         <View style={styles.card}>
-          {showWifiForm ? (
-            <>
-              <Text style={styles.wifiLabel}>Network Name (SSID)</Text>
-              <TextInput style={styles.textInput} value={wifiSsid} onChangeText={setWifiSsid} placeholder="Network name" autoCapitalize="none" />
-              <Text style={[styles.wifiLabel, { marginTop: 10 }]}>Password</Text>
-              <TextInput style={styles.textInput} value={wifiPassword} onChangeText={setWifiPassword} placeholder="Password" secureTextEntry autoCapitalize="none" />
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-                <TouchableOpacity style={[styles.button, { flex: 1 }, savingWifi && styles.buttonDisabled]} onPress={handleSaveWifi} disabled={savingWifi}>
-                  {savingWifi ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.button, styles.buttonSecondary, { flex: 1 }]} onPress={() => setShowWifiForm(false)}>
-                  <Text style={styles.buttonSecondaryText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              {status?.wifi_ssid ? (
-                <Row label="Network" value={status.wifi_ssid} />
-              ) : null}
-              <TouchableOpacity style={styles.logLink} onPress={() => {
-                setWifiSsid(status?.wifi_ssid ?? '');
-                setShowWifiForm(true);
-              }}>
-                <Text style={styles.logLinkText}>Update WiFi Credentials</Text>
-                <Text style={styles.logLinkChevron}>›</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          <View style={styles.nameRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827' }}>
+                {(ctrl?.connectionMode ?? 'ble') === 'cloud' ? 'Cloud (via internet)' : 'Bluetooth (local)'}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                {(ctrl?.connectionMode ?? 'ble') === 'cloud'
+                  ? 'Commands relay through the backend server over WiFi.'
+                  : 'Commands go directly to the controller over BLE.'}
+              </Text>
+            </View>
+            <Switch
+              value={(ctrl?.connectionMode ?? 'ble') === 'cloud'}
+              onValueChange={(val: boolean) => {
+                const newMode: ConnectionMode = val ? 'cloud' : 'ble';
+                if (newMode === 'cloud' && !ctrl?.mac) {
+                  Alert.alert('Not Available', 'Register this controller with the cloud first.');
+                  return;
+                }
+                if (ctrl) updateController(ctrl.deviceId, { connectionMode: newMode });
+              }}
+              trackColor={{ false: '#d1d5db', true: '#1a56db' }}
+              thumbColor="#fff"
+            />
+          </View>
         </View>
 
-        {/* Device Status */}
-        <Text style={styles.sectionHeader}>Device Status</Text>
-        <View style={styles.card}>
-          {status && (
-            <>
-              <Row label="Build"       value={status.build} />
-              <Row label="Firmware"    value={status.firmware} />
-              <Row label="MAC"         value={status.mac} />
-              <Row label="Memory"      value={formatRam(status.ram_free, status.ram_total)} />
-              <Row label="NTP"         value={status.ntp_synced ? 'Synced' : 'Not synced'} />
-              <Row label="Schedule"    value={status.active_schedule_name ?? 'None'} />
-              <Row label="Temperature" value={`${status.temperature_c.toFixed(1)}°C  /  ${status.temperature_f.toFixed(1)}°F`} />
-              <Row label="Uptime"      value={formatUptime(status.uptime_seconds)} />
-              <Row label="Zones"       value={status.zones_running ? 'Running' : 'Idle'} />
-            </>
-          )}
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={() => { loadedRef.current = false; load(); }}
-            disabled={loading}
-          >
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Refresh Status</Text>}
-          </TouchableOpacity>
-        </View>
-
-        {/* Time */}
-        <Text style={styles.sectionHeader}>Time</Text>
-        <View style={styles.card}>
-          {timeData && (
-            <>
-              <Row label="Controller time" value={
-                timeData.epoch
-                  ? new Date(timeData.epoch * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                  : '—'
-              } />
-              <Row label="Timezone"   value={`${timeData.tz_name} (${timeData.tz_offset_str})`} />
-              <Row label="NTP synced" value={timeData.synced ? 'Yes' : 'No'} />
-              {timeData.lat !== undefined && (
-                <Row label="GPS" value={`${timeData.lat.toFixed(5)}, ${timeData.lon?.toFixed(5)}`} />
+        {isCloudMode ? (
+          <View style={styles.card}>
+            <Text style={{ fontSize: 14, color: '#9ca3af', paddingVertical: 12, textAlign: 'center' }}>
+              Switch to Bluetooth to configure WiFi, view device status, and sync time.
+            </Text>
+          </View>
+        ) : (
+          <>
+            {/* WiFi */}
+            <Text style={styles.sectionHeader}>WiFi</Text>
+            <View style={styles.card}>
+              {showWifiForm ? (
+                <>
+                  <Text style={styles.wifiLabel}>Network Name (SSID)</Text>
+                  <TextInput style={styles.textInput} value={wifiSsid} onChangeText={setWifiSsid} placeholder="Network name" autoCapitalize="none" />
+                  <Text style={[styles.wifiLabel, { marginTop: 10 }]}>Password</Text>
+                  <TextInput style={styles.textInput} value={wifiPassword} onChangeText={setWifiPassword} placeholder="Password" secureTextEntry autoCapitalize="none" />
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                    <TouchableOpacity style={[styles.button, { flex: 1 }, savingWifi && styles.buttonDisabled]} onPress={handleSaveWifi} disabled={savingWifi}>
+                      {savingWifi ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.button, styles.buttonSecondary, { flex: 1 }]} onPress={() => setShowWifiForm(false)}>
+                      <Text style={styles.buttonSecondaryText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {status?.wifi_ssid ? <Row label="Network" value={status.wifi_ssid} /> : null}
+                  <TouchableOpacity style={styles.logLink} onPress={() => { setWifiSsid(status?.wifi_ssid ?? ''); setShowWifiForm(true); }}>
+                    <Text style={styles.logLinkText}>Update WiFi Credentials</Text>
+                    <Text style={styles.logLinkChevron}>›</Text>
+                  </TouchableOpacity>
+                </>
               )}
-            </>
-          )}
-          <TouchableOpacity style={[styles.button, syncing && styles.buttonDisabled]} onPress={handleSyncFromPhone} disabled={syncing}>
-            {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sync from Phone</Text>}
-          </TouchableOpacity>
-        </View>
+            </View>
+
+            {/* Device Status */}
+            <Text style={styles.sectionHeader}>Device Status</Text>
+            <View style={styles.card}>
+              {status && (
+                <>
+                  <Row label="Build"       value={status.build} />
+                  <Row label="Firmware"    value={status.firmware} />
+                  <Row label="MAC"         value={status.mac} />
+                  <Row label="Memory"      value={formatRam(status.ram_free, status.ram_total)} />
+                  <Row label="NTP"         value={status.ntp_synced ? 'Synced' : 'Not synced'} />
+                  <Row label="Schedule"    value={status.active_schedule_name ?? 'None'} />
+                  <Row label="Temperature" value={`${status.temperature_c.toFixed(1)}°C  /  ${status.temperature_f.toFixed(1)}°F`} />
+                  <Row label="Uptime"      value={formatUptime(status.uptime_seconds)} />
+                  <Row label="Zones"       value={status.zones_running ? 'Running' : 'Idle'} />
+                </>
+              )}
+              <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={() => { loadedRef.current = false; load(); }} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Refresh Status</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* Time */}
+            <Text style={styles.sectionHeader}>Time</Text>
+            <View style={styles.card}>
+              {timeData && (
+                <>
+                  <Row label="Controller time" value={
+                    timeData.epoch
+                      ? new Date(timeData.epoch * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                      : '—'
+                  } />
+                  <Row label="Timezone"   value={`${timeData.tz_name} (${timeData.tz_offset_str})`} />
+                  <Row label="NTP synced" value={timeData.synced ? 'Yes' : 'No'} />
+                  {timeData.lat !== undefined && (
+                    <Row label="GPS" value={`${timeData.lat.toFixed(5)}, ${timeData.lon?.toFixed(5)}`} />
+                  )}
+                </>
+              )}
+              <TouchableOpacity style={[styles.button, syncing && styles.buttonDisabled]} onPress={handleSyncFromPhone} disabled={syncing}>
+                {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sync from Phone</Text>}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         {/* Activity */}
         <Text style={styles.sectionHeader}>Activity</Text>
