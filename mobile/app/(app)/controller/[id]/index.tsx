@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Alert, Modal, useWindowDimensions,
+  ActivityIndicator, StyleSheet, Alert, Animated, useWindowDimensions,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -9,17 +9,29 @@ import { useControllerStore } from '@/store/controllers';
 import { useControllerConnection, ZoneData } from '@/context/ControllerConnection';
 import { sliderToSeconds, secondsToSlider, formatDurationLabel } from '@/utils/durationSlider';
 
-// Mirrors ZoneLed::colorForZone in firmware
 const ZONE_COLORS: Record<number, string> = {
-  1: '#ffffff', // White
-  2: '#ff0000', // Red
-  3: '#ff8000', // Orange
-  4: '#ffff00', // Yellow
-  5: '#00ff00', // Green
-  6: '#0000ff', // Blue
-  7: '#4b0082', // Indigo
-  8: '#9400d3', // Violet
+  1: '#ffffff', 2: '#ff0000', 3: '#ff8000', 4: '#ffff00',
+  5: '#00ff00', 6: '#0000ff', 7: '#4b0082', 8: '#9400d3',
 };
+
+function SprinklerIcon() {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const opacity     = anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+  const translateY  = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
+  return (
+    <Animated.Text style={{ opacity, transform: [{ translateY }], fontSize: 16, marginLeft: 4 }}>
+      💦
+    </Animated.Text>
+  );
+}
 
 export default function ControllerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,7 +42,6 @@ export default function ControllerDetailScreen() {
     useControllerConnection();
 
   const [durationSecs, setDurationSecs]             = useState(60);
-  const [pendingZone, setPendingZone]               = useState<number | null>(null);
   const [skipStopAllConfirm, setSkipStopAllConfirm] = useState(false);
 
   const COLS    = 2;
@@ -38,33 +49,27 @@ export default function ControllerDetailScreen() {
   const PADDING = 16;
   const badgeSize = (width - PADDING * 2 - GAP * (COLS - 1)) / COLS;
 
-  function handleStartZone(zoneId: number) {
-    setDurationSecs(60);
-    setPendingZone(zoneId);
-  }
-
-  async function confirmStartZone() {
-    const zoneId = pendingZone;
-    setPendingZone(null);
-    if (zoneId === null) return;
-    try {
-      await execCommand('start_zone', { id: zoneId, duration: durationSecs });
-      setZones(prev => prev.map(z =>
-        z.id === zoneId ? { ...z, status: 'pending', runtime_seconds: durationSecs } : z
-      ));
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to start zone');
-    }
-  }
-
-  async function handleStopZone(zoneId: number) {
-    try {
-      await execCommand('stop_zone', { id: zoneId });
-      setZones(prev => prev.map(z =>
-        z.id === zoneId ? { ...z, status: 'idle', runtime_seconds: 0 } : z
-      ));
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to stop zone');
+  async function handleTapZone(zoneId: number) {
+    const zone = zones.find(z => z.id === zoneId);
+    if (!zone) return;
+    if (zone.status === 'idle') {
+      try {
+        await execCommand('start_zone', { id: zoneId, duration: durationSecs });
+        setZones(prev => prev.map(z =>
+          z.id === zoneId ? { ...z, status: 'pending', runtime_seconds: durationSecs } : z
+        ));
+      } catch (e: any) {
+        Alert.alert('Error', e?.message ?? 'Failed to start zone');
+      }
+    } else {
+      try {
+        await execCommand('stop_zone', { id: zoneId });
+        setZones(prev => prev.map(z =>
+          z.id === zoneId ? { ...z, status: 'idle', runtime_seconds: 0 } : z
+        ));
+      } catch (e: any) {
+        Alert.alert('Error', e?.message ?? 'Failed to stop zone');
+      }
     }
   }
 
@@ -101,7 +106,8 @@ export default function ControllerDetailScreen() {
     );
   }
 
-  // Build rows of 2
+  const anyRunning = zones.some(z => z.status === 'running' || z.status === 'pending');
+
   const rows: ZoneData[][] = [];
   for (let i = 0; i < zones.length; i += COLS) {
     rows.push(zones.slice(i, i + COLS));
@@ -112,41 +118,11 @@ export default function ControllerDetailScreen() {
       <Stack.Screen options={{
         title: ctrl?.name ?? 'Controller',
         headerRight: () => (
-          <TouchableOpacity onPress={handleStopAll} style={styles.stopAllHeaderBtn} disabled={!connected}>
-            <Text style={[styles.stopAllHeaderText, !connected && { opacity: 0.4 }]}>■ Stop All</Text>
+          <TouchableOpacity onPress={handleStopAll} style={styles.stopAllHeaderBtn} disabled={!connected || !anyRunning}>
+            <Text style={[styles.stopAllHeaderText, (!connected || !anyRunning) && { opacity: 0.3 }]}>■ Stop All</Text>
           </TouchableOpacity>
         ),
       }} />
-
-      {/* Duration picker modal */}
-      <Modal visible={pendingZone !== null} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Start Zone {pendingZone}</Text>
-            <Text style={styles.modalDuration}>{formatDurationLabel(durationSecs)}</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={0} maximumValue={100}
-              value={secondsToSlider(durationSecs)}
-              onValueChange={pos => setDurationSecs(sliderToSeconds(pos))}
-              minimumTrackTintColor="#1a56db" maximumTrackTintColor="#d1d5db" thumbTintColor="#1a56db"
-            />
-            <View style={styles.sliderLabels}>
-              <Text style={styles.sliderEndLabel}>5s</Text>
-              <Text style={styles.sliderMidLabel}>1m</Text>
-              <Text style={styles.sliderEndLabel}>60m</Text>
-            </View>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setPendingZone(null)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalConfirm} onPress={confirmStartZone}>
-                <Text style={styles.modalConfirmText}>▶ Start</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {!connected && !connecting && (
         <View style={styles.disconnectedBanner}>
@@ -162,6 +138,30 @@ export default function ControllerDetailScreen() {
       )}
 
       <ScrollView contentContainerStyle={{ padding: PADDING, paddingBottom: 24 }}>
+        {/* Shared duration slider */}
+        <View style={styles.sliderCard}>
+          <View style={styles.sliderHeader}>
+            <Text style={styles.sliderLabel}>Duration</Text>
+            <Text style={styles.sliderValue}>{formatDurationLabel(durationSecs)}</Text>
+          </View>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={0} maximumValue={100}
+            value={secondsToSlider(durationSecs)}
+            onValueChange={pos => setDurationSecs(sliderToSeconds(pos))}
+            minimumTrackTintColor="#1a56db" maximumTrackTintColor="#d1d5db" thumbTintColor="#1a56db"
+          />
+          <View style={styles.sliderLabels}>
+            <Text style={styles.sliderEndLabel}>5s</Text>
+            <Text style={styles.sliderMidLabel}>1m</Text>
+            <Text style={styles.sliderEndLabel}>60m</Text>
+          </View>
+        </View>
+
+        <Text style={styles.hint}>
+          {anyRunning ? 'Tap a running zone to stop it.' : 'Tap a zone to run it for the selected duration.'}
+        </Text>
+
         {rows.map((row, ri) => (
           <View key={ri} style={[styles.gridRow, ri > 0 && { marginTop: GAP }]}>
             {row.map((z) => {
@@ -173,23 +173,22 @@ export default function ControllerDetailScreen() {
               return (
                 <TouchableOpacity
                   key={z.id}
-                  activeOpacity={isIdle ? 0.7 : 1}
-                  onPress={() => isIdle && connected && handleStartZone(z.id)}
+                  activeOpacity={0.7}
+                  onPress={() => connected && handleTapZone(z.id)}
                   style={[
                     styles.badge,
                     { width: badgeSize },
                     isRunning && styles.badgeRunning,
                     isPending && styles.badgePending,
-                    isIdle && !connected && styles.btnDisabled,
+                    !connected && styles.btnDisabled,
                   ]}
                 >
-                  {/* Header row: LED dot + name */}
                   <View style={styles.badgeHeader}>
                     <View style={[styles.zoneLed, { backgroundColor: ledColor }]} />
                     <Text style={styles.zoneName} numberOfLines={1}>{z.name}</Text>
+                    {(isRunning || isPending) && <SprinklerIcon />}
                   </View>
 
-                  {/* Status */}
                   <Text style={[
                     styles.badgeStatus,
                     isRunning && styles.badgeStatusRunning,
@@ -198,25 +197,10 @@ export default function ControllerDetailScreen() {
                     {isRunning ? `▶ ${formatRuntime(z.runtime_seconds)}` :
                      isPending ? '… Pending' : 'Tap to run'}
                   </Text>
-
-                  {/* Stop/Cancel button — only shown when active */}
-                  {!isIdle && (
-                    <TouchableOpacity
-                      style={[styles.badgeBtn, styles.badgeBtnStop, !connected && styles.btnDisabled]}
-                      onPress={() => connected && handleStopZone(z.id)}
-                    >
-                      <Text style={styles.badgeBtnStopText}>
-                        {isPending ? 'Cancel' : 'Stop'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </TouchableOpacity>
               );
             })}
-            {/* Fill empty cell in last row if odd count */}
-            {row.length < COLS && (
-              <View style={{ width: badgeSize }} />
-            )}
+            {row.length < COLS && <View style={{ width: badgeSize }} />}
           </View>
         ))}
       </ScrollView>
@@ -236,7 +220,18 @@ const styles = StyleSheet.create({
   },
   disconnectedText: { color: '#dc2626', fontWeight: '600' },
   reconnectText:    { color: '#1a56db', fontWeight: '600' },
-  gridRow:   { flexDirection: 'row', justifyContent: 'space-between' },
+  sliderCard: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  sliderHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  sliderLabel:    { fontSize: 13, color: '#6b7280', fontWeight: '500' },
+  sliderValue:    { fontSize: 18, fontWeight: '700', color: '#1a56db' },
+  sliderLabels:   { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 },
+  sliderEndLabel: { fontSize: 11, color: '#9ca3af' },
+  sliderMidLabel: { fontSize: 11, color: '#9ca3af' },
+  hint:        { fontSize: 12, color: '#9ca3af', marginBottom: 10, textAlign: 'center' },
+  gridRow:     { flexDirection: 'row', justifyContent: 'space-between' },
   badge: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
@@ -246,29 +241,10 @@ const styles = StyleSheet.create({
   badgeHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   zoneLed:      { width: 12, height: 12, borderRadius: 6, marginRight: 7, borderWidth: 1, borderColor: '#e5e7eb', flexShrink: 0 },
   zoneName:     { fontSize: 14, fontWeight: '700', color: '#111827', flex: 1 },
-  badgeStatus:  { fontSize: 12, color: '#9ca3af', marginBottom: 8 },
-  badgeTapHint: { fontSize: 11, color: '#c7d2fe', marginBottom: 4 },
+  badgeStatus:  { fontSize: 12, color: '#9ca3af' },
   badgeStatusRunning: { color: '#16a34a', fontWeight: '600' },
   badgeStatusPending: { color: '#f59e0b', fontWeight: '600' },
-  badgeBtn:     { borderRadius: 7, paddingVertical: 8, alignItems: 'center' },
-  badgeBtnRun:  { backgroundColor: '#eff6ff' },
-  badgeBtnStop: { backgroundColor: '#fef2f2' },
-  badgeBtnRunText:  { color: '#1a56db', fontWeight: '700', fontSize: 13 },
-  badgeBtnStopText: { color: '#dc2626', fontWeight: '700', fontSize: 13 },
   btnDisabled:  { opacity: 0.35 },
   stopAllHeaderBtn:  { marginRight: 8, paddingHorizontal: 8, paddingVertical: 4 },
   stopAllHeaderText: { color: '#fca5a5', fontWeight: '600', fontSize: 13 },
-  modalOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
-  modalBox:        { backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '88%', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 8 },
-  modalTitle:      { fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  modalDuration:   { fontSize: 42, fontWeight: '700', color: '#1a56db', textAlign: 'center', marginBottom: 8 },
-  slider:          { width: '100%', height: 40 },
-  sliderLabels:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: -4 },
-  sliderEndLabel:  { fontSize: 11, color: '#9ca3af', width: 28 },
-  sliderMidLabel:  { fontSize: 11, color: '#9ca3af', position: 'absolute', left: '25%', transform: [{ translateX: -8 }] },
-  modalButtons:    { flexDirection: 'row', gap: 10 },
-  modalCancel:     { flex: 1, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#d1d5db', alignItems: 'center' },
-  modalCancelText: { color: '#374151', fontWeight: '600' },
-  modalConfirm:    { flex: 1, padding: 12, borderRadius: 8, backgroundColor: '#1a56db', alignItems: 'center' },
-  modalConfirmText:{ color: '#fff', fontWeight: '600' },
 });

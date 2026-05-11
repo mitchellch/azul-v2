@@ -253,9 +253,12 @@ export default function ControllerPage() {
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-3 h-3 rounded-full border border-gray-200 flex-shrink-0"
                       style={{ backgroundColor: ZONE_COLORS[z.number] }} />
-                    <span className="font-semibold text-sm text-gray-900 truncate">
+                    <span className="font-semibold text-sm text-gray-900 truncate flex-1">
                       {z.name || `Zone ${z.number}`}
                     </span>
+                    {(isRunning || isPending) && (
+                      <span className="animate-bounce text-base leading-none">💦</span>
+                    )}
                   </div>
                   <p className={`text-xs h-4 ${
                     isRunning ? 'text-green-600 font-medium' :
