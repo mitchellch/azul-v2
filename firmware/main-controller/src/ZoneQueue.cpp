@@ -31,6 +31,7 @@ bool ZoneQueue::cancel(uint8_t zoneId) {
     const Zone* z = _zones.getZone(zoneId);
     if (z && z->status == ZoneStatus::RUNNING) {
         _zones.stopZone(zoneId);
+        if (onZoneStop) onZoneStop(zoneId);
         Logger::log("[Queue] Stopped running zone %d", zoneId);
         return true;
     }
@@ -55,6 +56,13 @@ bool ZoneQueue::cancel(uint8_t zoneId) {
 }
 
 void ZoneQueue::cancelAll() {
+    // Fire stop event for any running zone before clearing
+    for (uint8_t i = 1; i <= MAX_ZONES; i++) {
+        const Zone* z = _zones.getZone(i);
+        if (z && z->status == ZoneStatus::RUNNING) {
+            if (onZoneStop) onZoneStop(i);
+        }
+    }
     _zones.stopAll();
     _head  = 0;
     _tail  = 0;
@@ -65,18 +73,26 @@ void ZoneQueue::cancelAll() {
 void ZoneQueue::tick() {
     bool running = _zones.isAnyZoneRunning();
 
-    // Detect zone completion — was running last tick, now idle with nothing new to start
-    if (!running && _wasRunning && _count == 0) {
-        if (onZoneStop) onZoneStop();
+    // Detect zone completion — was running last tick, now idle
+    if (!running && _wasRunning) {
+        if (onZoneStop) onZoneStop(_lastRunningZone);
     }
     _wasRunning = running;
-
-    if (running) return;
+    if (running) {
+        // Track which zone is running so we can report it on stop
+        for (uint8_t i = 0; i < MAX_ZONES; i++) {
+            if (_zones.getZone(i + 1)->status == ZoneStatus::RUNNING) {
+                _lastRunningZone = i + 1;
+                break;
+            }
+        }
+        return;
+    }
 
     // Dequeue and start the next entry
     QueueEntry entry;
     if (dequeue(entry)) {
-        _zones.startZone(entry.zoneId, entry.durationSeconds);
+        _zones.startZone(entry.zoneId, entry.durationSeconds, entry.source);
         _audit.append(entry.zoneId, entry.durationSeconds, (AuditSource)entry.source);
         Logger::log("[Queue] Starting zone %d (%ds) — %d remaining",
                     entry.zoneId, entry.durationSeconds, _count);

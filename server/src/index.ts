@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import { router } from './router';
@@ -10,9 +11,12 @@ import { startOfflineSweep } from './jobs/offlineSweep';
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors());
 app.use(express.json());
+
+// Serve uploaded zone photos
+app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 
 // Public health check — no auth required
 app.get('/health', (_req, res) => {
@@ -29,4 +33,5 @@ startOfflineSweep();
 
 app.listen(PORT, () => {
   console.log(`[Server] Listening on http://localhost:${PORT}`);
+  console.log(`[Server] Mode: ${process.env.DEBUG_MODE === 'true' ? 'DEBUG' : 'PRODUCTION'}`);
 });

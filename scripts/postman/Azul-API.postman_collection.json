@@ -1,0 +1,1040 @@
+{
+  "info": {
+    "name": "Azul API",
+    "_postman_id": "azul-api-collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Azul irrigation system API — local development (localhost:3000).\n\nRequires an Auth0 M2M application authorized for the `https://api.azul` audience."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-fetch M2M token if not already set or expired.",
+          "// Uses pm.variables.get() which checks: environment > collection > globals",
+          "const tokenExpiry = pm.variables.get('token_expiry');",
+          "const now = Math.floor(Date.now() / 1000);",
+          "if (tokenExpiry && now < parseInt(tokenExpiry)) return;",
+          "",
+          "pm.sendRequest({",
+          "  url: pm.variables.get('auth0_domain') + '/oauth/token',",
+          "  method: 'POST',",
+          "  header: { 'Content-Type': 'application/json' },",
+          "  body: {",
+          "    mode: 'raw',",
+          "    raw: JSON.stringify({",
+          "      grant_type: 'client_credentials',",
+          "      client_id: pm.variables.get('auth0_client_id'),",
+          "      client_secret: pm.variables.get('auth0_client_secret'),",
+          "      audience: 'https://api.azul'",
+          "    })",
+          "  }",
+          "}, (err, res) => {",
+          "  if (err) { console.error('Token fetch failed', err); return; }",
+          "  const body = res.json();",
+          "  pm.collectionVariables.set('token', body.access_token);",
+          "  pm.collectionVariables.set('token_expiry', String(now + (body.expires_in || 3600) - 60));",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url",           "value": "http://localhost:3000/api" },
+    { "key": "auth0_domain",       "value": "https://dev-cgrr5v7lsr3wbpcj.us.auth0.com" },
+    { "key": "auth0_client_id",    "value": "PASTE_YOUR_M2M_CLIENT_ID_HERE" },
+    { "key": "auth0_client_secret","value": "PASTE_YOUR_M2M_CLIENT_SECRET_HERE" },
+    { "key": "mac",                "value": "AC:A7:04:26:60:D0" },
+    { "key": "mac_b",              "value": "E8:F6:0A:85:4C:90" },
+    { "key": "zone",               "value": "1" },
+    { "key": "schedule_uuid",      "value": "" },
+    { "key": "test_schedule_uuid", "value": "" },
+    { "key": "token",              "value": "" },
+    { "key": "token_expiry",       "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Devices",
+      "item": [
+        {
+          "name": "List my devices",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices", "host": ["{{base_url}}"], "path": ["devices"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get device by MAC",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('MAC matches', () => {",
+                  "  pm.expect(pm.response.json().mac).to.eql(pm.collectionVariables.get('mac'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Zones",
+      "item": [
+        {
+          "name": "List zones",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/zones", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start zone",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/{{zone}}/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "{{zone}}", "start"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stop zone",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/{{zone}}/stop", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "{{zone}}", "stop"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stop all zones",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "List schedules",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "",
+                  "const schedules = pm.response.json();",
+                  "if (schedules.length > 0 && schedules[0].uuid) {",
+                  "  pm.collectionVariables.set('schedule_uuid', schedules[0].uuid);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get active schedule",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/active", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "active"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 404', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activate schedule",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Schedule is active', () => {",
+                  "  pm.expect(pm.response.json().active).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate all schedules",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Connection",
+      "item": [
+        {
+          "name": "Get connection status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/devices/{{mac}}/connection-status", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "connection-status"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has mac field', () => {",
+                  "  pm.expect(pm.response.json().mac).to.eql(pm.collectionVariables.get('mac'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Test Flows",
+      "item": [
+        {
+          "name": "0. Setup",
+          "item": [
+            {
+              "name": "Fetch schedule UUID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const schedules = pm.response.json();",
+                "pm.test('At least one schedule exists', () => {",
+                "  pm.expect(schedules.length).to.be.above(0);",
+                "});",
+                "",
+                "const active = schedules.find(s => s.active);",
+                "const first = active || schedules[0];",
+                "pm.collectionVariables.set('schedule_uuid', first.uuid);",
+                "console.log('Setup: schedule_uuid =', first.uuid, active ? '(was active)' : '(first in list)');"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Zone activation test",
+          "item": [
+            {
+              "name": "1. Deactivate all schedules",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedules deactivated', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "2. Start zone",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/{{zone}}/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "{{zone}}", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone start accepted', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Verify zone is running",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zoneNum = parseInt(pm.collectionVariables.get('zone'));",
+                "const zones = pm.response.json().zones;",
+                "const target = zones.find(z => z.number === zoneNum);",
+                "",
+                "pm.test('Zone exists in response', () => {",
+                "  pm.expect(target).to.not.be.undefined;",
+                "});",
+                "",
+                "pm.test('Zone is running or pending', () => {",
+                "  pm.expect(target.status).to.be.oneOf(['running', 'pending']);",
+                "});",
+                "",
+                "pm.test('Zone has runtime > 0', () => {",
+                "  pm.expect(target.runtime_seconds).to.be.above(0);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "4. Stop zone",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/{{zone}}/stop", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "{{zone}}", "stop"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "5. Re-activate schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedule re-activated', () => pm.response.to.have.status(200));",
+                "pm.test('Schedule is active', () => {",
+                "  pm.expect(pm.response.json().active).to.be.true;",
+                "});"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Zone queuing test",
+          "item": [
+            {
+              "name": "1. Deactivate all schedules",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedules deactivated', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "2. Stop all zones (clean slate)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('All zones stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Start zone 1",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/1/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "1", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 60 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 1 start accepted', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "4. Start zone 2 (should queue)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/2/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "2", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 60 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 2 start accepted', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "5. Verify zone 1 running, zone 2 pending",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const z1 = zones.find(z => z.number === 1);",
+                "const z2 = zones.find(z => z.number === 2);",
+                "",
+                "pm.test('Zone 1 is running', () => {",
+                "  pm.expect(z1.status).to.eql('running');",
+                "});",
+                "",
+                "pm.test('Zone 2 is pending (queued)', () => {",
+                "  pm.expect(z2.status).to.eql('pending');",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "6. Stop zone 1",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/1/stop", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "1", "stop"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 1 stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "7. Verify zone 2 promoted to running",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const z1 = zones.find(z => z.number === 1);",
+                "const z2 = zones.find(z => z.number === 2);",
+                "",
+                "pm.test('Zone 1 is now idle', () => {",
+                "  pm.expect(z1.status).to.eql('idle');",
+                "});",
+                "",
+                "pm.test('Zone 2 promoted to running', () => {",
+                "  pm.expect(z2.status).to.be.oneOf(['running', 'pending']);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "8. Cleanup — stop all zones",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('All zones stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "9. Cleanup — re-activate schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedule re-activated', () => pm.response.to.have.status(200));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Stop All test",
+          "item": [
+            {
+              "name": "1. Deactivate all schedules",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedules deactivated', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "2. Start zone 1",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/1/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "1", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 60 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 1 started', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Start zone 2",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/2/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "2", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 60 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 2 started', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "4. Start zone 3",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/3/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "3", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 60 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 3 started', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "5. Verify zones are active",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const active = zones.filter(z => z.status === 'running' || z.status === 'pending');",
+                "",
+                "pm.test('At least 2 zones are running or pending', () => {",
+                "  pm.expect(active.length).to.be.at.least(2);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "6. Stop all zones",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Stop all accepted', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "7. Verify all zones idle",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const nonIdle = zones.filter(z => z.status !== 'idle');",
+                "",
+                "pm.test('All zones are idle', () => {",
+                "  pm.expect(nonIdle.length).to.eql(0);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "8. Cleanup — re-activate schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Schedule re-activated', () => pm.response.to.have.status(200));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Schedule CRUD lifecycle",
+          "item": [
+            {
+              "name": "1. Create test schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Schedule\",\n  \"start_date\": \"1900-01-01\",\n  \"end_date\": \"1900-12-31\",\n  \"runs\": [\n    { \"zone_id\": 1, \"day_mask\": 42, \"hour\": 6, \"minute\": 0, \"duration_seconds\": 300 },\n    { \"zone_id\": 2, \"day_mask\": 42, \"hour\": 6, \"minute\": 5, \"duration_seconds\": 300 }\n  ]\n}" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                "",
+                "const body = pm.response.json();",
+                "pm.test('Name matches', () => pm.expect(body.name).to.eql('Postman Test Schedule'));",
+                "pm.test('Has 2 runs', () => pm.expect(body.runs.length).to.eql(2));",
+                "pm.test('Has UUID', () => pm.expect(body.uuid).to.be.a('string'));",
+                "",
+                "pm.collectionVariables.set('test_schedule_uuid', body.uuid);"
+              ]}}]
+            },
+            {
+              "name": "2. GET schedule back",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const body = pm.response.json();",
+                "pm.test('UUID matches', () => pm.expect(body.uuid).to.eql(pm.collectionVariables.get('test_schedule_uuid')));",
+                "pm.test('Name matches', () => pm.expect(body.name).to.eql('Postman Test Schedule'));",
+                "pm.test('Has 2 runs', () => pm.expect(body.runs.length).to.eql(2));",
+                "pm.test('Not active yet', () => pm.expect(body.active).to.be.false);"
+              ]}}]
+            },
+            {
+              "name": "3. Update schedule (change duration)",
+              "request": {
+                "method": "PUT",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Schedule (Updated)\",\n  \"start_date\": \"1900-01-01\",\n  \"end_date\": \"1900-12-31\",\n  \"runs\": [\n    { \"zone_id\": 1, \"day_mask\": 42, \"hour\": 6, \"minute\": 0, \"duration_seconds\": 600 },\n    { \"zone_id\": 2, \"day_mask\": 42, \"hour\": 6, \"minute\": 10, \"duration_seconds\": 600 }\n  ]\n}" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const body = pm.response.json();",
+                "pm.test('Name updated', () => pm.expect(body.name).to.eql('Postman Test Schedule (Updated)'));",
+                "pm.test('Run 1 duration updated to 600', () => {",
+                "  const run1 = body.runs.find(r => r.zone_id === 1);",
+                "  pm.expect(run1.duration_seconds).to.eql(600);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "4. GET updated schedule",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Name is updated version', () => {",
+                "  pm.expect(pm.response.json().name).to.eql('Postman Test Schedule (Updated)');",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "5. Activate test schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Schedule is active', () => pm.expect(pm.response.json().active).to.be.true);"
+              ]}}]
+            },
+            {
+              "name": "6. Deactivate all",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+              ]}}]
+            },
+            {
+              "name": "7. Verify deactivated",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Schedule is inactive', () => pm.expect(pm.response.json().active).to.be.false);"
+              ]}}]
+            },
+            {
+              "name": "8. Delete test schedule",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('ok is true', () => pm.expect(pm.response.json().ok).to.be.true);"
+              ]}}]
+            },
+            {
+              "name": "9. Verify deleted (expect 404)",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{test_schedule_uuid}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{test_schedule_uuid}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 404 — schedule deleted', () => pm.response.to.have.status(404));"
+              ]}}]
+            },
+            {
+              "name": "10. Cleanup — re-activate original schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Original schedule re-activated', () => pm.response.to.have.status(200));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Multi-controller isolation",
+          "item": [
+            {
+              "name": "1. Verify both controllers exist",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices", "host": ["{{base_url}}"], "path": ["devices"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const devices = pm.response.json();",
+                "const macA = pm.collectionVariables.get('mac');",
+                "const macB = pm.collectionVariables.get('mac_b');",
+                "",
+                "pm.test('Controller A exists', () => {",
+                "  pm.expect(devices.some(d => d.mac === macA)).to.be.true;",
+                "});",
+                "pm.test('Controller B exists', () => {",
+                "  pm.expect(devices.some(d => d.mac === macB)).to.be.true;",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "2. Stop all on both controllers",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Controller A stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Stop all on controller B",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac_b}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac_b}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Controller B stopped', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "4. Start zone 1 on controller B",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac_b}}/zones/1/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac_b}}", "zones", "1", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 1 started on controller B', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "5. Verify controller A zone 1 still idle",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const z1 = zones.find(z => z.number === 1);",
+                "",
+                "pm.test('Controller A zone 1 is idle (not affected by controller B)', () => {",
+                "  pm.expect(z1.status).to.eql('idle');",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "6. Verify controller B zone 1 is running",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac_b}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac_b}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const zones = pm.response.json().zones;",
+                "const z1 = zones.find(z => z.number === 1);",
+                "",
+                "pm.test('Controller B zone 1 is running', () => {",
+                "  pm.expect(z1.status).to.be.oneOf(['running', 'pending']);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "7. Cleanup — stop all on controller B",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac_b}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac_b}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Controller B cleaned up', () => pm.response.to.have.status(200));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Zone edge cases",
+          "item": [
+            {
+              "name": "1. Stop an already-idle zone (should be OK)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/stop-all", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "stop-all"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Stop-all on idle device is 200', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "2. Stop a single idle zone (should be OK)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/1/stop", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "1", "stop"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Stop idle zone is 200 (idempotent)', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Start zone 0 (invalid — below range)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/0/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "0", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 0 rejected with 400', () => pm.response.to.have.status(400));"
+              ]}}]
+            },
+            {
+              "name": "4. Start zone 9 (invalid — above range)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/zones/9/start", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "zones", "9", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Zone 9 rejected with 400', () => pm.response.to.have.status(400));"
+              ]}}]
+            },
+            {
+              "name": "5. Start zone on non-existent MAC",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/XX:XX:XX:XX:XX:XX/zones/1/start", "host": ["{{base_url}}"], "path": ["devices", "XX:XX:XX:XX:XX:XX", "zones", "1", "start"] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{ \"duration\": 30 }" }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Non-existent device returns 404', () => pm.response.to.have.status(404));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Schedule edge cases",
+          "item": [
+            {
+              "name": "1. Activate non-existent schedule UUID",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/00000000-0000-0000-0000-000000000000/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "00000000-0000-0000-0000-000000000000", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Non-existent schedule returns 404', () => pm.response.to.have.status(404));"
+              ]}}]
+            },
+            {
+              "name": "2. Deactivate when nothing is active (idempotent)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Deactivate is idempotent (200)', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "3. Deactivate again (double deactivate)",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/deactivate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "deactivate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Double deactivate is still 200', () => pm.response.to.have.status(200));"
+              ]}}]
+            },
+            {
+              "name": "4. Delete non-existent schedule",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/00000000-0000-0000-0000-000000000000", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "00000000-0000-0000-0000-000000000000"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Delete non-existent returns 404', () => pm.response.to.have.status(404));"
+              ]}}]
+            },
+            {
+              "name": "5. Cleanup — re-activate original schedule",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/schedules/{{schedule_uuid}}/activate", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "schedules", "{{schedule_uuid}}", "activate"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Original schedule re-activated', () => pm.response.to.have.status(200));"
+              ]}}]
+            }
+          ]
+        },
+        {
+          "name": "Connection status",
+          "item": [
+            {
+              "name": "1. Get connection status for online controller",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}/connection-status", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}", "connection-status"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const body = pm.response.json();",
+                "pm.test('MAC matches', () => pm.expect(body.mac).to.eql(pm.collectionVariables.get('mac')));"
+              ]}}]
+            },
+            {
+              "name": "2. Get device and verify online + recent lastSeenAt",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/{{mac}}", "host": ["{{base_url}}"], "path": ["devices", "{{mac}}"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "",
+                "const body = pm.response.json();",
+                "pm.test('Device is online', () => pm.expect(body.online).to.be.true);",
+                "",
+                "pm.test('lastSeenAt is within last 5 minutes', () => {",
+                "  const lastSeen = new Date(body.lastSeenAt).getTime();",
+                "  const fiveMinAgo = Date.now() - (5 * 60 * 1000);",
+                "  pm.expect(lastSeen).to.be.above(fiveMinAgo);",
+                "});"
+              ]}}]
+            },
+            {
+              "name": "3. Connection status for non-existent MAC",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/devices/XX:XX:XX:XX:XX:XX/connection-status", "host": ["{{base_url}}"], "path": ["devices", "XX:XX:XX:XX:XX:XX", "connection-status"] }
+              },
+              "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                "pm.test('Non-existent device returns 404', () => pm.response.to.have.status(404));"
+              ]}}]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

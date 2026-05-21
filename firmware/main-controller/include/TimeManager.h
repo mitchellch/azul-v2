@@ -43,6 +43,11 @@ public:
     float getLon() const { return _lon; }
     bool  hasLocation() const { return _hasLocation; }
 
+#ifdef DEBUG_BUILD
+    void    setTimeWarp(int32_t offsetSec);
+    int32_t getTimeWarp() const { return _warpOffset; }
+#endif
+
 private:
     int32_t _tzOffset  = 0;
     int32_t _dstOffset = 0;
@@ -52,6 +57,9 @@ private:
     float   _lat = 0.0f;
     float   _lon = 0.0f;
     bool    _hasLocation = false;
+#ifdef DEBUG_BUILD
+    int32_t _warpOffset = 0;
+#endif
 
     void loadFromNvs();
     void applyTz();

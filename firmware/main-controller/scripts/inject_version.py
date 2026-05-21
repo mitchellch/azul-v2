@@ -38,14 +38,15 @@ dirty = is_git_dirty()
 version = env.GetProjectOption("custom_fw_version", "0.0.0")
 date = datetime.now().strftime("%Y%m%d")
 dirty_suffix = "-dirty" if dirty else ""
+debug_suffix = "-debug" if "DEBUG_BUILD" in [d[0] if isinstance(d, tuple) else d for d in env.get("CPPDEFINES", [])] else ""
 
 env.Append(CPPDEFINES=[
     ("FW_GIT_SHA", f'\\"{sha}\\"'),
     ("FW_GIT_DIRTY", str(dirty)),
 ])
 
-# Rename output binary: azul-mc-20260507-v0.1.0-abc1234[-dirty]
-binary_name = f"azul-mc-{date}-v{version}-{sha}{dirty_suffix}"
+# Rename output binary: azul-mc-20260507-v0.1.0-abc1234[-dirty][-debug]
+binary_name = f"azul-mc-{date}-v{version}-{sha}{dirty_suffix}{debug_suffix}"
 env.Replace(PROGNAME=binary_name)
 
 print(f"[version] {binary_name}")

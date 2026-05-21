@@ -28,9 +28,12 @@
 #define FW_BUILD_DATE __DATE__
 #define FW_BUILD_TIME __TIME__
 
-// Returns "0.1.0-abc1234" or "0.1.0-abc1234-dirty"
+// Returns "0.1.0-abc1234" or "0.1.0-abc1234-dirty" or "0.1.0-abc1234-debug"
 inline String fwVersionFull() {
     String v = FW_VERSION_BASE "-" FW_GIT_SHA;
     if (FW_GIT_DIRTY) v += "-dirty";
+#ifdef DEBUG_BUILD
+    v += "-debug";
+#endif
     return v;
 }

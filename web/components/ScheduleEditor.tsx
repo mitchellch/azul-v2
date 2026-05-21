@@ -47,12 +47,16 @@ const DAY_BITS  = [1, 2, 4, 8, 16, 32, 64];
 
 function today(): string { return new Date().toISOString().slice(0, 10); }
 
-function blankRun(): ScheduleRun {
-  return { zone_id: 1, day_mask: 127, hour: 7, minute: 0, duration_seconds: 300 };
+function blankRun(existingRuns: ScheduleRun[] = []): ScheduleRun {
+  const used = new Set(existingRuns.map(r => r.zone_id));
+  let zone_id = 1;
+  for (let i = 1; i <= 8; i++) { if (!used.has(i)) { zone_id = i; break; } }
+  const now = new Date();
+  return { zone_id, day_mask: 127, hour: now.getHours(), minute: now.getMinutes(), duration_seconds: 300 };
 }
 
 function blankSchedule(): Schedule {
-  return { name: '', start_date: today(), end_date: null, runs: [blankRun()] };
+  return { name: '', start_date: today(), end_date: null, runs: [blankRun([])] };
 }
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
@@ -66,31 +70,53 @@ function formatDur(secs: number): string {
   return `${m}m`;
 }
 
-// Piecewise: 0–25 = 1m–60m (1-min steps), 25–100 = 61m–240m (1-min steps)
-// Total range: 1 minute to 4 hours, all in 1-minute increments
+const SCHED_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+
 function sliderToSecs(pos: number): number {
+  if (SCHED_DEBUG) {
+    if (pos <= 25) {
+      const secs = 5 + (pos / 25) * 25;
+      return Math.round(secs / 5) * 5;
+    }
+    const secs = 30 + ((pos - 25) / 75) * 270;
+    return Math.round(secs / 5) * 5;
+  }
   if (pos <= 25) {
-    const mins = Math.round((pos / 25) * 59) + 1; // 1..60 mins
+    const mins = Math.round((pos / 25) * 59) + 1;
     return mins * 60;
   }
-  const mins = 60 + Math.round(((pos - 25) / 75) * 180); // 60..240 mins
+  const mins = 60 + Math.round(((pos - 25) / 75) * 180);
   return mins * 60;
 }
 function secsToSlider(secs: number): number {
+  if (SCHED_DEBUG) {
+    const s = Math.max(5, Math.min(secs, 300));
+    if (s <= 30) return ((s - 5) / 25) * 25;
+    return 25 + ((s - 30) / 270) * 75;
+  }
   const mins = secs / 60;
   if (mins <= 60) return ((mins - 1) / 59) * 25;
   return 25 + ((mins - 60) / 180) * 75;
 }
 
-const DUR_LABELS = [
-  { label: '5m',   pos: secsToSlider(300) },
-  { label: '15m',  pos: secsToSlider(900) },
-  { label: '30m',  pos: secsToSlider(1800) },
-  { label: '1h',   pos: 25 },
-  { label: '2h',   pos: secsToSlider(7200) },
-  { label: '3h',   pos: secsToSlider(10800) },
-  { label: '4h',   pos: 100 },
-];
+const DUR_LABELS = SCHED_DEBUG
+  ? [
+      { label: '5s',  pos: secsToSlider(5) },
+      { label: '15s', pos: secsToSlider(15) },
+      { label: '30s', pos: secsToSlider(30) },
+      { label: '1m',  pos: secsToSlider(60) },
+      { label: '3m',  pos: secsToSlider(180) },
+      { label: '5m',  pos: secsToSlider(300) },
+    ]
+  : [
+      { label: '5m',   pos: secsToSlider(300) },
+      { label: '15m',  pos: secsToSlider(900) },
+      { label: '30m',  pos: secsToSlider(1800) },
+      { label: '1h',   pos: 25 },
+      { label: '2h',   pos: secsToSlider(7200) },
+      { label: '3h',   pos: secsToSlider(10800) },
+      { label: '4h',   pos: 100 },
+    ];
 
 interface Props {
   schedule?: Schedule;
@@ -270,7 +296,7 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Zone Schedules</label>
             <button onClick={() => {
               setExpandedRun(s.runs.length);
-              setS(p => ({ ...p, runs: [...p.runs, blankRun()] }));
+              setS(p => ({ ...p, runs: [...p.runs, blankRun(p.runs)] }));
             }} className="text-xs font-semibold text-[#1a56db] hover:underline">+ Add Zone</button>
           </div>
           <div className="space-y-3">
@@ -286,6 +312,12 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
                   expanded={expandedRun === i}
                   onExpand={() => setExpandedRun(expandedRun === i ? null : i)}
                   onChange={patch => updateRun(i, patch)}
+                  onClone={() => {
+                    const next = blankRun(s.runs);
+                    const cloned = { ...run, zone_id: next.zone_id };
+                    setExpandedRun(s.runs.length);
+                    setS(p => ({ ...p, runs: [...p.runs, cloned] }));
+                  }}
                   onRemove={() => {
                     setS(p => ({ ...p, runs: p.runs.filter((_, idx) => idx !== i) }));
                     if (expandedRun === i) setExpandedRun(null);
@@ -298,28 +330,44 @@ export function ScheduleEditor({ schedule, zoneNames, onSave, onCancel }: Props)
   );
 }
 
-function runSummary(run: ScheduleRun, zoneNames: Record<number, string>): string {
-  const zone  = zoneNames[run.zone_id] ?? `Zone ${run.zone_id}`;
-  const time  = `${pad(run.hour)}:${pad(run.minute)}`;
-  const dur   = formatDur(run.duration_seconds);
-  const sched = (run.interval_days ?? 1) > 1
-    ? `every ${run.interval_days} days`
-    : ['Su','Mo','Tu','We','Th','Fr','Sa'].filter((_, d) => run.day_mask & (1 << d)).join(' ');
-  return `${zone}  ·  ${time}  ·  ${dur}  ·  ${sched || 'no days'}`;
+function formatTime12(hour: number, minute: number): string {
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  const h = hour % 12 || 12;
+  return `${h}:${pad(minute)} ${ampm}`;
 }
 
-function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onChange, onRemove }: {
+function runSummary(run: ScheduleRun, zoneNames: Record<number, string>): { zone: string; time: string; dur: string; sched: string } {
+  return {
+    zone:  zoneNames[run.zone_id] ?? `Zone ${run.zone_id}`,
+    time:  formatTime12(run.hour, run.minute),
+    dur:   formatDur(run.duration_seconds),
+    sched: (run.interval_days ?? 1) > 1
+      ? `every ${run.interval_days} days`
+      : ['Su','Mo','Tu','We','Th','Fr','Sa'].filter((_, d) => run.day_mask & (1 << d)).join(' ') || 'no days',
+  };
+}
+
+function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onChange, onClone, onRemove }: {
   run: ScheduleRun; index: number; zoneNames: Record<number, string>;
   canRemove: boolean; expanded: boolean; onExpand: () => void;
-  onChange: (p: Partial<ScheduleRun>) => void; onRemove: () => void;
+  onChange: (p: Partial<ScheduleRun>) => void; onClone: () => void; onRemove: () => void;
 }) {
   const useInterval = (run.interval_days ?? 1) > 1;
 
   if (!expanded) {
+    const s = runSummary(run, zoneNames);
     return (
       <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-3 hover:border-gray-300 transition-colors cursor-pointer"
         onClick={onExpand}>
-        <p className="text-sm text-gray-700 truncate flex-1">{runSummary(run, zoneNames)}</p>
+        <span className="text-sm text-gray-700 truncate w-36 flex-shrink-0">{s.zone}</span>
+        <span className="text-sm text-gray-500 w-20 flex-shrink-0 tabular-nums">{s.time}</span>
+        <span className="text-sm text-gray-400 w-12 flex-shrink-0">{s.dur}</span>
+        <span className="text-sm text-gray-400 truncate flex-1">{s.sched}</span>
+        <button type="button" onClick={e => { e.stopPropagation(); onClone(); }}
+          aria-label="Clone zone schedule"
+          className="text-gray-300 hover:text-[#1a56db] transition-colors flex-shrink-0 text-sm leading-none px-1">
+          ⧉
+        </button>
         {canRemove && (
           <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }}
             aria-label="Remove zone schedule"
@@ -335,9 +383,12 @@ function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onCha
     <div className="border border-[#1a56db] rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <button type="button" onClick={onExpand} className="text-xs text-gray-400 hover:text-gray-600">▾ Collapse</button>
-        {canRemove && (
-          <button onClick={onRemove} className="text-xs text-red-400 hover:text-red-600">Remove</button>
-        )}
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={onClone} className="text-xs text-[#1a56db] hover:underline">Clone</button>
+          {canRemove && (
+            <button onClick={onRemove} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+          )}
+        </div>
       </div>
 
       {/* Zone + Time */}
@@ -353,13 +404,13 @@ function RunEditor({ run, index, zoneNames, canRemove, expanded, onExpand, onCha
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Start Time</label>
-          <div className="flex gap-1 items-center">
-            <input type="number" min="0" max="23" className="w-16 border border-gray-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
-              value={pad(run.hour)} onChange={e => onChange({ hour: Math.min(23, Math.max(0, Number(e.target.value))) })} />
-            <span className="text-gray-400 font-bold">:</span>
-            <input type="number" min="0" max="59" step="5" className="w-16 border border-gray-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
-              value={pad(run.minute)} onChange={e => onChange({ minute: Math.min(59, Math.max(0, Number(e.target.value))) })} />
-          </div>
+          <input type="time"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+            value={`${pad(run.hour)}:${pad(run.minute)}`}
+            onChange={e => {
+              const [h, m] = e.target.value.split(':').map(Number);
+              if (!isNaN(h) && !isNaN(m)) onChange({ hour: h, minute: m });
+            }} />
         </div>
       </div>
 

@@ -15,6 +15,7 @@ struct Zone {
   char name[32];
   ZoneStatus status;
   uint32_t runtimeSeconds;   // remaining seconds if running
+  uint8_t  source;           // AuditSource value — set when zone starts, 0 when idle
 };
 
 class ZoneController {
@@ -22,7 +23,7 @@ public:
   ZoneController();
   void begin(); // load persisted zone names from NVS
 
-  bool startZone(uint8_t zoneId, uint32_t durationSeconds);
+  bool startZone(uint8_t zoneId, uint32_t durationSeconds, uint8_t source = 0);
   bool stopZone(uint8_t zoneId);
   bool stopAll();
 

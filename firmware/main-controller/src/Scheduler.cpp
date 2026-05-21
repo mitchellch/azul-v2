@@ -227,3 +227,8 @@ void Scheduler::deactivate() {
 bool Scheduler::isTimeSynced() const {
     return _time.isSynced();
 }
+
+void Scheduler::resetFiredFlags() {
+    _firedToday   = 0;
+    _lastFiredDay = -1;
+}

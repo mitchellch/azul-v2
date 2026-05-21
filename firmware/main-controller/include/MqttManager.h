@@ -18,7 +18,7 @@ public:
 
     void publishStatus();
     void publishSchedules();
-    void publishZoneEvent(uint8_t zoneId, uint16_t durationSeconds, uint8_t source);
+    void publishZoneTransition(uint8_t zoneId, const char* type, uint16_t durationSeconds, uint8_t source);
 
     bool isConnected();
 

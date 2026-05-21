@@ -36,6 +36,9 @@ function AuthGuard() {
   return null;
 }
 
+const DEBUG_MODE = process.env.EXPO_PUBLIC_DEBUG_MODE === 'true';
+console.log(`[Azul Mobile] Mode: ${DEBUG_MODE ? 'DEBUG' : 'PRODUCTION'}`);
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

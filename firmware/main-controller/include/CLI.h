@@ -58,4 +58,7 @@ private:
   void cmdTzSet(const char* args);
   void cmdNvsDump();
   void cmdReboot();
+#ifdef DEBUG_BUILD
+  void cmdTimeWarp(const char* args);
+#endif
 };

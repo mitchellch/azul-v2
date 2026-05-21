@@ -55,15 +55,17 @@ void MqttManager::begin() {
 
     _client.setServer(_brokerUrl, _brokerPort);
     _client.setCallback(MqttManager::messageCallback);
-    _client.setBufferSize(1024);
+    _client.setBufferSize(2048);
+    _client.setKeepAlive(5);
 
     _queue.onZoneStart = [this](uint8_t zoneId, uint16_t durationSec, uint8_t source) {
-        publishZoneEvent(zoneId, durationSec, source);
-        publishStatus(); // immediate status push when zone starts
+        publishZoneTransition(zoneId, "zone_start", durationSec, source);
+        publishStatus();
     };
 
-    _queue.onZoneStop = [this]() {
-        publishStatus(); // immediate status push when zone stops
+    _queue.onZoneStop = [this](uint8_t zoneId) {
+        publishZoneTransition(zoneId, "zone_stop", 0, 0);
+        publishStatus();
     };
 
     reconnect();
@@ -86,10 +88,18 @@ void MqttManager::tick() {
 void MqttManager::reconnect() {
     if (!WiFi.isConnected()) return;
 
-    if (_client.connect(_clientId)) {
+    char topicConnection[64];
+    snprintf(topicConnection, sizeof(topicConnection), "azul/%s/connection", _mac);
+    const char* lwtPayload = "{\"online\":false}";
+
+    if (_client.connect(_clientId, nullptr, nullptr, topicConnection, 0, true, lwtPayload)) {
         _failCount = 0;
         Serial.printf("[MQTT] Connected to %s:%d\n", _brokerUrl, _brokerPort);
         _client.subscribe(_topicCmdSub);
+        // Announce online — clears any stale LWT
+        char topicConnection[64];
+        snprintf(topicConnection, sizeof(topicConnection), "azul/%s/connection", _mac);
+        _client.publish(topicConnection, "{\"online\":true}", true);
         publishStatus();
         publishSchedules(); // sync all schedules to backend on connect
     } else {
@@ -127,10 +137,13 @@ void MqttManager::publishStatus() {
     for (uint8_t i = 1; i <= MAX_ZONES; i++) {
         const Zone* z = _zones.getZone(i);
         if (!z) continue;
+        static const char* srcNames[] = {"scheduler", "REST", "BLE", "CLI", "MQTT"};
         JsonObject zo = zonesArr.add<JsonObject>();
         zo["id"]      = z->id;
         zo["status"]  = (z->status == ZoneStatus::RUNNING) ? "running" : "idle";
         zo["runtime"] = z->runtimeSeconds;
+        if (z->status == ZoneStatus::RUNNING)
+            zo["source"] = (z->source < 5) ? srcNames[z->source] : "unknown";
     }
 
     char buf[512];
@@ -167,13 +180,13 @@ void MqttManager::publishSchedules() {
     _client.publish(_topicSchedules, (const uint8_t*)out.c_str(), out.length(), false);
 }
 
-void MqttManager::publishZoneEvent(uint8_t zoneId, uint16_t durationSeconds, uint8_t source) {
+void MqttManager::publishZoneTransition(uint8_t zoneId, const char* type, uint16_t durationSeconds, uint8_t source) {
     if (!_client.connected()) return;
 
     static const char* srcNames[] = {"scheduler", "REST", "BLE", "CLI", "MQTT"};
 
     JsonDocument doc;
-    doc["type"]     = "zone_run";
+    doc["type"]     = type;
     doc["zone"]     = zoneId;
     doc["duration"] = durationSeconds;
     doc["source"]   = (source < 5) ? srcNames[source] : "unknown";
@@ -190,9 +203,9 @@ void MqttManager::publishZoneEvent(uint8_t zoneId, uint16_t durationSeconds, uin
 
 void MqttManager::messageCallback(char* topic, uint8_t* payload, unsigned int length) {
     if (!_instance) return;
-    if (length >= 512) return; // guard against oversized payloads
+    if (length >= 2048) return; // guard against oversized payloads
 
-    char msg[512];
+    char msg[2048];
     memcpy(msg, payload, length);
     msg[length] = '\0';
     _instance->handleMessage(topic, msg);
@@ -253,6 +266,16 @@ void MqttManager::handleMessage(const char* topic, const char* payload) {
         if (!uuid[0]) return;
         _scheduler.deleteSchedule(uuid);
 
+    } else if (strcmp(cmd, "schedule/activate") == 0) {
+        const char* uuid = data["uuid"] | "";
+        if (!uuid[0]) return;
+        _scheduler.activateSchedule(uuid);
+        publishStatus();
+
+    } else if (strcmp(cmd, "schedule/deactivate") == 0) {
+        _scheduler.deactivate();
+        publishStatus();
+
     } else if (strcmp(cmd, "time/set") == 0) {
         int32_t tzOffset = data["tz_offset"] | 0;
         int32_t tzDst    = data["tz_dst"]    | 0;
@@ -261,4 +284,12 @@ void MqttManager::handleMessage(const char* topic, const char* payload) {
             _time.setTzName(data["tz_name"].as<const char*>());
         }
     }
+#ifdef DEBUG_BUILD
+    else if (strcmp(cmd, "debug/time-warp") == 0) {
+        int32_t offset = data["offset"] | 0;
+        _time.setTimeWarp(offset);
+        _scheduler.resetFiredFlags();
+        publishStatus();
+    }
+#endif
 }

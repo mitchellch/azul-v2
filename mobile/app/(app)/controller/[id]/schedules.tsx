@@ -7,9 +7,9 @@ import {
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Slider from '@react-native-community/slider';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
-import { Stack } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useControllerConnection } from '@/context/ControllerConnection';
-import { sliderToSeconds, secondsToSlider, formatDurationLabel } from '@/utils/durationSlider';
+import { sliderToSeconds, secondsToSlider, formatDurationLabel, SLIDER_MAX_POS } from '@/utils/durationSlider';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,7 +48,7 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function SchedulesScreen() {
-  const { execCommand, connected } = useControllerConnection();
+  const { execCommand, connected, status } = useControllerConnection();
   const [loading, setLoading]       = useState(true);
   const [schedules, setSchedules]   = useState<Schedule[]>([]);
   const [activeUuid, setActiveUuid] = useState<string | null>(null);
@@ -127,19 +127,15 @@ export default function SchedulesScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: 'Schedules',
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 4 }}>
-              {loading && <ActivityIndicator size="small" color="#fff" />}
-              <TouchableOpacity onPress={() => setEditing(blankSchedule())} style={{ paddingHorizontal: 8 }}>
-                <Text style={{ color: '#fff', fontSize: 26, lineHeight: 30 }}>+</Text>
-              </TouchableOpacity>
-            </View>
-          ),
-        }}
-      />
+      <View style={styles.tabHeader}>
+        <Text style={styles.tabTitle}>Schedules</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {loading && <ActivityIndicator size="small" color="#1a56db" />}
+          <TouchableOpacity onPress={() => setEditing(blankSchedule())} style={{ padding: 8 }}>
+            <Text style={{ color: '#1a56db', fontSize: 26, lineHeight: 30, fontWeight: '300' }}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {!loading && schedules.length === 0 && (
         <View style={styles.center}>
@@ -201,6 +197,17 @@ export default function SchedulesScreen() {
             );
           }}
         />
+      )}
+
+      {(status as any)?.firmware && (
+        <View style={styles.firmwareRow}>
+          <Text style={styles.firmwareLabel}>Firmware {(status as any).firmware}</Text>
+          {process.env.EXPO_PUBLIC_DEBUG_MODE === 'true' && (
+            <View style={styles.debugBadge}>
+              <Text style={styles.debugText}>DEBUG</Text>
+            </View>
+          )}
+        </View>
       )}
     </View>
   );
@@ -375,23 +382,21 @@ function ScheduleEditor({ schedule, onSaved, onCancel }: {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f0f4f8' }}>
-      <Stack.Screen options={{
-        title: s.uuid ? 'Edit Schedule' : 'New Schedule',
-        headerLeft: () => (
-          <TouchableOpacity onPress={onCancel} style={{ marginLeft: 4, paddingHorizontal: 8 }}>
-            <Text style={{ color: '#fff', fontSize: 22 }}>‹</Text>
-          </TouchableOpacity>
-        ),
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={saving || !isDirty}
-            style={{ marginRight: 4, paddingHorizontal: 8, opacity: (!isDirty && !saving) ? 0.4 : 1 }}
-          >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Save</Text>}
-          </TouchableOpacity>
-        ),
-      }} />
+      <View style={{ backgroundColor: '#1a56db', flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4 }}>
+        <TouchableOpacity onPress={onCancel} style={{ width: 44, alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: 22 }}>‹</Text>
+        </TouchableOpacity>
+        <Text style={{ flex: 1, color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center' }}>
+          {s.uuid ? 'Edit Schedule' : 'New Schedule'}
+        </Text>
+        <TouchableOpacity
+          onPress={handleSave}
+          disabled={saving || !isDirty}
+          style={{ width: 44, alignItems: 'center', opacity: (!isDirty && !saving) ? 0.4 : 1 }}
+        >
+          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Save</Text>}
+        </TouchableOpacity>
+      </View>
 
       {/* Date pickers — use stable refs to prevent picker from bouncing */}
       <DateTimePickerModal
@@ -509,11 +514,12 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
   const useInterval  = intervalDays > 1;
 
   function zoneLabel(id: number) {
-    return zones.find(z => z.id === id)?.name ?? `Zone ${id}`;
+    const z = zones.find(z => z.id === id);
+    return z?.name || `Zone ${id}`;
   }
 
   function summaryText(): string {
-    const zone = zoneLabel(run.zone_id);
+    const zone = zoneLabel(run.zone_id) || `Zone ${run.zone_id}`;
     const time = `${String(run.hour).padStart(2, '0')}:${String(run.minute).padStart(2, '0')}`;
     const dur  = formatDurationLabel(run.duration_seconds);
     const sched = useInterval
@@ -549,7 +555,7 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
         <View style={{ flex: 1 }}>
           <Text style={styles.runFieldLabel}>Zone</Text>
           <TouchableOpacity style={styles.compactRow} onPress={() => setZonePickerOpen(true)}>
-            <Text style={styles.compactText} numberOfLines={1}>{zoneLabel(run.zone_id)}</Text>
+            <Text style={styles.compactText} numberOfLines={1}>{zoneLabel(run.zone_id) || `Zone ${run.zone_id}`}</Text>
             <Text style={styles.dateChevron}>›</Text>
           </TouchableOpacity>
         </View>
@@ -568,16 +574,16 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
         <TouchableOpacity style={zpStyles.overlay} activeOpacity={1} onPress={() => setZonePickerOpen(false)}>
           <View style={zpStyles.sheet}>
             <Text style={zpStyles.title}>Select Zone</Text>
-            {Array.from({ length: 8 }, (_, i) => i + 1).map(id => (
+            {(zones.length > 0 ? zones : Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}` }))).map(z => (
               <TouchableOpacity
-                key={id}
-                style={[zpStyles.item, run.zone_id === id && zpStyles.itemActive]}
-                onPress={() => { onUpdate({ zone_id: id }); setZonePickerOpen(false); }}
+                key={z.id}
+                style={[zpStyles.item, run.zone_id === z.id && zpStyles.itemActive]}
+                onPress={() => { onUpdate({ zone_id: z.id }); setZonePickerOpen(false); }}
               >
-                <Text style={[zpStyles.itemText, run.zone_id === id && zpStyles.itemTextActive]}>
-                  {zoneLabel(id)}
+                <Text style={[zpStyles.itemText, run.zone_id === z.id && zpStyles.itemTextActive]}>
+                  {z.name || `Zone ${z.id}`}
                 </Text>
-                {run.zone_id === id && <Text style={zpStyles.check}>✓</Text>}
+                {run.zone_id === z.id && <Text style={zpStyles.check}>✓</Text>}
               </TouchableOpacity>
             ))}
           </View>
@@ -589,14 +595,16 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
       <Text style={styles.durationLabel}>{formatDurationLabel(durSecs)}</Text>
       <Slider
         style={{ width: '100%', height: 36 }}
-        minimumValue={0} maximumValue={100}
+        minimumValue={0}
+        maximumValue={SLIDER_MAX_POS}
+        step={1}
         value={secondsToSlider(durSecs)}
-        onValueChange={pos => setDurSecs(sliderToSeconds(pos))}
-        onSlidingComplete={pos => onUpdate({ duration_seconds: sliderToSeconds(pos) })}
+        onValueChange={mins => setDurSecs(sliderToSeconds(mins))}
+        onSlidingComplete={mins => onUpdate({ duration_seconds: sliderToSeconds(mins) })}
         minimumTrackTintColor="#1a56db" maximumTrackTintColor="#d1d5db" thumbTintColor="#1a56db"
       />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 }}>
-        <Text style={styles.sliderEndLabel}>5s</Text>
+        <Text style={styles.sliderEndLabel}>1s</Text>
         <Text style={styles.sliderEndLabel}>60m</Text>
       </View>
 
@@ -667,6 +675,8 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
 
 const styles = StyleSheet.create({
   container:        { flex: 1, backgroundColor: '#f0f4f8' },
+  tabHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  tabTitle:         { fontSize: 17, fontWeight: '700', color: '#111827' },
   center:           { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyText:        { color: '#9ca3af', fontSize: 15, textAlign: 'center', marginBottom: 20 },
   addFirstBtn:      { backgroundColor: '#1a56db', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 28 },
@@ -726,6 +736,10 @@ const styles = StyleSheet.create({
   intervalValue:    { fontSize: 20, fontWeight: '700', color: '#1a56db', minWidth: 28, textAlign: 'center' },
   addRunBtn:        { marginTop: 8, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#1a56db', alignItems: 'center' },
   addRunText:       { color: '#1a56db', fontWeight: '600', fontSize: 14 },
+  firmwareRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, marginTop: 'auto' as any },
+  firmwareLabel:    { fontSize: 11, color: '#c4c9d4' },
+  debugBadge:       { backgroundColor: '#dc2626', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  debugText:        { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
 });
 
 const zpStyles = StyleSheet.create({

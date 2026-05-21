@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules } from './handlers';
+import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules, handleDeviceConnection, setPublishFn } from './handlers';
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 
@@ -15,6 +15,7 @@ class MqttClient {
       this.client!.subscribe('azul/+/status');
       this.client!.subscribe('azul/+/events');
       this.client!.subscribe('azul/+/schedules');
+      this.client!.subscribe('azul/+/connection');
       console.log('[MQTT] Subscribed to azul/+/status, azul/+/events, azul/+/schedules');
     });
 
@@ -26,9 +27,10 @@ class MqttClient {
 
       try {
         const data = JSON.parse(payload.toString());
-        if      (msgType === 'status')    handleDeviceStatus(mac, data);
-        else if (msgType === 'events')    handleDeviceEvent(mac, data);
-        else if (msgType === 'schedules') handleDeviceSchedules(mac, data);
+        if      (msgType === 'status')     handleDeviceStatus(mac, data);
+        else if (msgType === 'events')     handleDeviceEvent(mac, data);
+        else if (msgType === 'schedules')  handleDeviceSchedules(mac, data);
+        else if (msgType === 'connection') handleDeviceConnection(mac, data);
       } catch {
         console.error(`[MQTT] Failed to parse message on ${topic}`);
       }
@@ -56,3 +58,4 @@ class MqttClient {
 }
 
 export const mqttClient = new MqttClient();
+setPublishFn((mac, command, payload) => mqttClient.publish(mac, command, payload));

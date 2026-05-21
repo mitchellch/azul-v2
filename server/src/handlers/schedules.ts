@@ -167,6 +167,31 @@ schedulesRouter.put('/:uuid', async (req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 });
 
+// POST /api/devices/:mac/schedules/:uuid/activate
+schedulesRouter.post('/:uuid/activate', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
+    const existing = await db.schedule.findFirst({ where: { uuid: req.params.uuid, deviceId: device.id } });
+    if (!existing) throw new HttpError(404, 'Schedule not found');
+    await db.schedule.updateMany({ where: { deviceId: device.id }, data: { active: false } });
+    const schedule = await db.schedule.update({
+      where: { id: existing.id }, data: { active: true }, include: { runs: true },
+    });
+    mqttClient.publish(req.params.mac, 'schedule/activate', { uuid: req.params.uuid });
+    res.json(toPayload(schedule));
+  } catch (err) { next(err); }
+});
+
+// POST /api/devices/:mac/schedules/deactivate
+schedulesRouter.post('/deactivate', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
+    await db.schedule.updateMany({ where: { deviceId: device.id }, data: { active: false } });
+    mqttClient.publish(req.params.mac, 'schedule/deactivate', {});
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/devices/:mac/schedules/:uuid
 schedulesRouter.delete('/:uuid', async (req: Request, res: Response, next: NextFunction) => {
   try {

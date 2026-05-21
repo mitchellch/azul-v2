@@ -1,27 +1,45 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
+import { zoneStream, useZones, ZoneLive } from '@/lib/zoneStream';
 
-type Zone      = { id: string; number: number; name: string };
-type ZoneLive  = Zone & { status: 'idle' | 'running' | 'pending'; runtimeSeconds: number };
-// Schedule type imported from ScheduleEditor
-type LogEntry  = { id: string; zoneNumber: number; startedAt: string; durationSeconds: number; source: string };
-type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?: boolean };
+type LogEntry    = { id: string; zoneNumber: number; startedAt: string; durationSeconds: number; source: string };
+type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?: boolean; mac?: string; ip?: string };
 
 const ZONE_COLORS: Record<number, string> = {
-  1: '#e5e7eb', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
+  1: '#9ca3af', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
   5: '#22c55e', 6: '#3b82f6', 7: '#6366f1', 8: '#a855f7',
 };
 
-// Piecewise slider: 0–25 = 5s–60s, 25–100 = 1m–60m
+const WEB_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api').replace(/\/api$/, '');
+
+// Matches mobile: 0–25% = 1–5 min, 25–100% = 5–60 min, 1-minute granularity
 function sliderToSeconds(pos: number): number {
-  if (pos <= 25) return (Math.round((pos / 25) * 11) + 1) * 5;
-  return (Math.round(((pos - 25) / 75) * 59) + 1) * 60;
+  if (WEB_DEBUG) {
+    if (pos <= 25) {
+      const secs = 5 + (pos / 25) * 25;
+      return Math.round(secs / 5) * 5;
+    }
+    const secs = 30 + ((pos - 25) / 75) * 270;
+    return Math.round(secs / 5) * 5;
+  }
+  const p = Math.max(0, Math.min(pos, 100));
+  if (p < 25) {
+    return Math.round(1 + (p / 25) * 4) * 60;
+  }
+  return Math.round(5 + ((p - 25) / 75) * 55) * 60;
 }
 function secondsToSlider(secs: number): number {
-  if (secs <= 60) return ((Math.round(secs / 5) - 1) / 11) * 25;
-  return 25 + ((Math.round(secs / 60) - 1) / 59) * 75;
+  if (WEB_DEBUG) {
+    const s = Math.max(5, Math.min(secs, 300));
+    if (s <= 30) return ((s - 5) / 25) * 25;
+    return 25 + ((s - 30) / 270) * 75;
+  }
+  const mins = Math.max(1, Math.min(Math.round(secs / 60), 60));
+  if (mins <= 5) return ((mins - 1) / 4) * 25;
+  return 25 + ((mins - 5) / 55) * 75;
 }
 function formatDuration(secs: number): string {
   if (secs < 60)       return `${secs}s`;
@@ -29,14 +47,27 @@ function formatDuration(secs: number): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-const TABS = ['Schedules', 'Zones', 'Logs'] as const;
-type Tab = typeof TABS[number];
-
+const ZONE_DUR_TICKS = WEB_DEBUG
+  ? [
+      { label: '5s',  secs: 5 },
+      { label: '15s', secs: 15 },
+      { label: '30s', secs: 30 },
+      { label: '1m',  secs: 60 },
+      { label: '3m',  secs: 180 },
+      { label: '5m',  secs: 300 },
+    ]
+  : [
+      { label: '1m',  secs: 60 },
+      { label: '5m',  secs: 300 },
+      { label: '15m', secs: 900 },
+      { label: '30m', secs: 1800 },
+      { label: '45m', secs: 2700 },
+      { label: '60m', secs: 3600 },
+    ];
 function formatRuntime(secs: number): string {
   const m = Math.floor(secs / 60), s = secs % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
-
 function formatUptime(secs: number): string {
   const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60);
   if (d > 0) return `${d}d ${h}h ${m}m`;
@@ -44,111 +75,116 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
+const TABS = ['Schedules', 'Zones', 'Settings'] as const;
+type Tab = typeof TABS[number];
+
 export default function ControllerPage() {
-  const { mac } = useParams<{ mac: string }>();
-  const [tab, setTab]             = useState<Tab>('Schedules');
-  const [zones, setZones]         = useState<ZoneLive[]>([]);
+  const { mac: rawMac } = useParams<{ mac: string }>();
+  const mac = decodeURIComponent(rawMac as string);
+  const router  = useRouter();
+
+  const [tab, setTab]             = useState<Tab>('Zones');
+  const zones = useZones(mac as string);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);
   const [logs, setLogs]           = useState<LogEntry[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
-  const [duration, setDuration] = useState(60);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [duration, setDuration]   = useState(WEB_DEBUG ? 60 : 300);
+  const [deviceName, setDeviceName] = useState('');
+
+  const [zoneEdits, setZoneEdits]   = useState<Record<number, string>>({});
+  const [savingZone, setSavingZone] = useState<number | null>(null);
+  const [nameEdit, setNameEdit]     = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const fileInputRefs  = useRef<Record<number, HTMLInputElement | null>>({});
+  const [editingZone, setEditingZone]   = useState<number | null>(null);
+  const [editingName, setEditingName]   = useState('');
 
   const apiFetch = useCallback(async (path: string, opts?: RequestInit) => {
     const res = await fetch(`/api/proxy${path}`, { cache: 'no-store', ...opts });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (!res.ok) throw new Error(`Error ${res.status}`);
     return res.json();
   }, []);
 
-  // Load initial data
+  useEffect(() => { zoneStream.open(); }, []);
+
+  // Load device metadata and schedules (not zone state — that comes from zoneStream)
   useEffect(() => {
     Promise.all([
-      apiFetch(`/devices/${mac}/zones`),
+      apiFetch(`/devices/${mac}`),
       apiFetch(`/devices/${mac}/schedules`),
-    ]).then(([z, s]) => {
-      setZones(z.map((zone: Zone) => ({ ...zone, status: 'idle' as const, runtimeSeconds: 0 })));
+    ]).then(([device, s]) => {
+      // Seed from server response if the stream hasn't received data yet
+      if (Array.isArray(device.zones)) {
+        zoneStream.seed(mac as string, device.zones.map((z: any) => ({
+          id:            z.id,
+          number:        z.number,
+          name:          z.name ?? `Zone ${z.number}`,
+          status:        (z.status ?? 'idle') as ZoneLive['status'],
+          runtimeSeconds: z.runtime_seconds ?? 0,
+          photoUrl:      z.photoUrl ?? null,
+        })));
+      }
+      setZoneEdits(Object.fromEntries(
+        (device.zones ?? []).map((z: any) => [z.number, z.name ?? ''])
+      ));
       setSchedules(s);
+      setDeviceName(device.name ?? '');
+      setNameEdit(device.name ?? '');
+      setDeviceStatus({
+        firmware:       device.firmware,
+        uptime_seconds: device.uptime_seconds,
+        mac:            device.mac,
+        ip:             device.ipAddress,
+      });
     }).catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [mac, apiFetch]);
 
-  // SSE for device status + periodic zone poll
-  useEffect(() => {
-    const es = new EventSource(`/api/stream/${mac}`);
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'snapshot' && data.device) {
-          setDeviceStatus({ firmware: data.device.firmware, uptime_seconds: data.device.uptime_seconds });
-        }
-        if (data.type === 'status') {
-          if (data.uptime_seconds) setDeviceStatus(prev => ({ ...prev, uptime_seconds: data.uptime_seconds }));
-          if (Array.isArray(data.zones)) {
-            setZones(prev => prev.map(z => {
-              const u = (data.zones as any[]).find((x: any) => x.id === z.number);
-              if (!u) return z;
-              if (z.status === 'pending' && u.status === 'idle') return z;
-              return { ...z, status: u.status, runtimeSeconds: u.runtime ?? 0 };
-            }));
-          }
-        }
-        // Auto-refresh schedules when controller syncs them to the backend
-        if (data.type === 'schedules_synced') {
-          fetch(`/api/proxy/devices/${mac}/schedules`)
-            .then(r => r.ok ? r.json() : null)
-            .then(s => { if (s) setSchedules(s); })
-            .catch(() => {});
-        }
-      } catch {}
-    };
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [mac, apiFetch]);
-
-  // 1s countdown for running zones
-  useEffect(() => {
-    tickRef.current = setInterval(() => {
-      setZones(prev => prev.map(z =>
-        z.status === 'running' && z.runtimeSeconds > 0
-          ? { ...z, runtimeSeconds: z.runtimeSeconds - 1 }
-          : z
-      ));
-    }, 1000);
-    return () => { if (tickRef.current) clearInterval(tickRef.current); };
-  }, []);
-
   async function startZone(number: number) {
-    // Optimistic update — SSE will deliver the real state when controller responds
-    setZones(prev => prev.map(z => z.number === number ? { ...z, status: 'pending', runtimeSeconds: duration } : z));
-    await fetch(`/api/proxy/devices/${mac}/zones/${number}/start`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ duration }),
-    });
+    zoneStream.patch(mac as string, number, 'pending', duration);
+    try {
+      const res = await fetch(`/api/proxy/devices/${mac}/zones/${number}/start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration }),
+      });
+      if (!res.ok) {
+        zoneStream.patch(mac as string, number, 'idle', 0);
+        return;
+      }
+      // Only promote to running if no other zone is already running — otherwise this
+      // zone is queued on the controller and will flip to running via SSE when its turn comes.
+      const otherRunning = zoneStream.getZones(mac as string)
+        .some(z => z.number !== number && z.status === 'running');
+      if (!otherRunning) zoneStream.patch(mac as string, number, 'running', duration);
+    } catch {
+      zoneStream.patch(mac as string, number, 'idle', 0);
+    }
   }
 
-  async function stopZone(number: number) {
-    setZones(prev => prev.map(z => z.number === number ? { ...z, status: 'idle', runtimeSeconds: 0 } : z));
-    await fetch(`/api/proxy/devices/${mac}/zones/${number}/stop`, { method: 'POST' });
+  function stopZone(number: number) {
+    const zone = zones.find(z => z.number === number);
+    if (zone?.source === 'scheduler') {
+      if (!confirm(`${zone.name || `Zone ${number}`} is running on a schedule. Stop it?`)) return;
+    }
+    zoneStream.patch(mac as string, number, 'idle', 0);
+    fetch(`/api/proxy/devices/${mac}/zones/${number}/stop`, { method: 'POST' });
   }
 
   async function stopAll() {
-    setZones(prev => prev.map(z => ({ ...z, status: 'idle' as const, runtimeSeconds: 0 })));
+    zones.forEach(z => zoneStream.patch(mac as string, z.number, 'idle', 0));
     await fetch(`/api/proxy/devices/${mac}/zones/stop-all`, { method: 'POST' });
-  }
-
-  function isScheduleActive(s: Schedule): boolean {
-    const today = new Date().toISOString().split('T')[0];
-    const startOk = today >= s.start_date;
-    const endOk = !s.end_date || today <= s.end_date;
-    return startOk && endOk;
   }
 
   async function saveSchedule(s: Schedule) {
     const method = s.uuid ? 'PUT' : 'POST';
-    const url    = s.uuid
+    const url = s.uuid
       ? `/api/proxy/devices/${mac}/schedules/${s.uuid}`
       : `/api/proxy/devices/${mac}/schedules`;
     const res = await fetch(url, {
@@ -171,9 +207,74 @@ export default function ControllerPage() {
     setSchedules(updated);
   }
 
+  async function toggleScheduleActive(s: Schedule) {
+    if (s.active) {
+      await fetch(`/api/proxy/devices/${mac}/schedules/deactivate`, { method: 'POST' });
+    } else {
+      await fetch(`/api/proxy/devices/${mac}/schedules/${s.uuid}/activate`, { method: 'POST' });
+    }
+    const updated = await apiFetch(`/devices/${mac}/schedules`);
+    setSchedules(updated);
+  }
+
   async function loadLogs() {
     const data = await apiFetch(`/devices/${mac}/log?limit=50`);
     setLogs(data);
+  }
+
+  async function saveDeviceName() {
+    const name = nameEdit.trim();
+    if (!name || name === deviceName) return;
+    setSavingName(true);
+    try {
+      await fetch(`/api/proxy/devices/${mac}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      setDeviceName(name);
+      setNameEdit(name);
+    } finally {
+      setSavingName(false);
+    }
+  }
+
+  async function saveZoneName(number: number) {
+    const name = (zoneEdits[number] ?? '').trim() || `Zone ${number}`;
+    setSavingZone(number);
+    try {
+      await fetch(`/api/proxy/devices/${mac}/zones/${number}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      zoneStream.setZoneName(mac as string, number, name);
+      setZoneEdits(prev => ({ ...prev, [number]: name }));
+    } finally {
+      setSavingZone(null);
+    }
+  }
+
+  async function uploadWebPhoto(zoneNumber: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('photo', file);
+    try {
+      const res = await fetch(`/api/proxy/devices/${mac}/zones/${zoneNumber}/photo`, {
+        method: 'PUT',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const zone = await res.json();
+      zoneStream.setZonePhoto(mac as string, zoneNumber, zone.photoUrl);
+    } catch (err: any) {
+      alert(err.message ?? 'Photo upload failed');
+    }
+    e.target.value = '';
+  }
+
+  function isInDateRange(s: Schedule): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    return today >= s.start_date && (!s.end_date || today <= s.end_date);
   }
 
   const anyRunning = zones.some(z => z.status === 'running' || z.status === 'pending');
@@ -183,17 +284,28 @@ export default function ControllerPage() {
       <div className="w-6 h-6 border-2 border-[#1a56db] border-t-transparent rounded-full animate-spin" />
     </div>
   );
-
   if (error) return <div className="text-red-500 text-center py-10">{error}</div>;
 
   return (
     <div>
+      {/* Back nav + controller name */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-[#1a56db] hover:text-blue-800 font-medium text-sm flex items-center gap-1"
+        >
+          ← Controllers
+        </button>
+        <span className="text-gray-300">/</span>
+        <h2 className="text-xl font-bold text-gray-900">{deviceName}</h2>
+      </div>
+
       {/* Tabs + Stop All */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex gap-1 bg-gray-200 rounded-lg p-1">
           {TABS.map(t => (
             <button key={t}
-              onClick={() => { setTab(t); if (t === 'Logs') loadLogs(); }}
+              onClick={() => { setTab(t); if (t === 'Settings') loadLogs(); }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 tab === t ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
               }`}>
@@ -209,9 +321,9 @@ export default function ControllerPage() {
         )}
       </div>
 
+      {/* ── Zones tab ── */}
       {tab === 'Zones' && (
         <>
-          {/* Duration slider */}
           <div className="bg-white rounded-xl shadow-sm px-5 py-4 mb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-500 font-medium">Duration</span>
@@ -223,56 +335,153 @@ export default function ControllerPage() {
               className="w-full accent-[#1a56db]"
             />
             <div className="relative text-xs text-gray-400 mt-1 h-4">
-              <span className="absolute" style={{ left: '0%' }}>5s</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '11.4%' }}>30s</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '25%' }}>1m</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '42.8%' }}>15m</span>
-              <span className="absolute -translate-x-1/2" style={{ left: '61.9%' }}>30m</span>
-              <span className="absolute -translate-x-full" style={{ left: '100%' }}>60m</span>
+              {ZONE_DUR_TICKS.map((t, i) => {
+                const pos = secondsToSlider(t.secs);
+                const isFirst = i === 0;
+                const isLast = i === ZONE_DUR_TICKS.length - 1;
+                return (
+                  <span key={t.label}
+                    className={`absolute cursor-pointer hover:text-[#1a56db] transition-colors ${isFirst ? '' : isLast ? '-translate-x-full' : '-translate-x-1/2'}`}
+                    style={{ left: `${pos}%` }}
+                    onClick={() => setDuration(t.secs)}
+                  >{t.label}</span>
+                );
+              })}
             </div>
           </div>
 
-          {/* Instruction */}
-          <p className="text-sm text-gray-400 mb-3">
-            {anyRunning ? 'Click a running zone to stop it.' : 'Click a zone to run it for the selected duration.'}
-          </p>
+          <p className="text-sm text-gray-400 mb-3">Click a zone to start · click again to stop or cancel.</p>
 
-          {/* Zone grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {zones.map(z => {
               const isRunning = z.status === 'running';
               const isPending = z.status === 'pending';
+              const color = ZONE_COLORS[z.number] ?? '#9ca3af';
+              const bg    = isRunning ? '#f0fdf4' : isPending ? '#fffbeb' : '#ffffff';
+              const photoThumb = z.photoUrl ? `${BACKEND_URL}${z.photoUrl}` : null;
+
               return (
-                <div key={z.id}
-                  onClick={() => isRunning ? stopZone(z.number) : (!isPending && startZone(z.number))}
-                  className={`bg-white rounded-xl shadow-sm p-4 transition-all select-none ${
-                    isRunning ? 'ring-2 ring-green-400 cursor-pointer hover:ring-red-400' :
-                    isPending ? 'ring-2 ring-amber-400 cursor-default' :
-                    'cursor-pointer hover:shadow-md active:scale-95'
-                  }`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-3 h-3 rounded-full border border-gray-200 flex-shrink-0"
-                      style={{ backgroundColor: ZONE_COLORS[z.number] }} />
-                    <span className="font-semibold text-sm text-gray-900 truncate flex-1">
+                <div key={z.number}
+                  onClick={() => {
+                    if (longPressFired.current) { longPressFired.current = false; return; }
+                    if (isRunning || isPending) { stopZone(z.number); }
+                    else { startZone(z.number); if (previewPhoto) setPreviewPhoto(null); }
+                  }}
+                  onMouseDown={() => {
+                    longPressFired.current = false;
+                    longPressTimer.current = setTimeout(() => {
+                      longPressFired.current = true;
+                      setEditingZone(z.number);
+                      setEditingName(z.name || `Zone ${z.number}`);
+                    }, 500);
+                  }}
+                  onMouseUp={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                  onMouseLeave={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="relative rounded-xl p-4 cursor-pointer select-none transition-all hover:shadow-md active:scale-95 overflow-hidden"
+                  style={{ backgroundColor: bg, border: `2px solid ${color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                  {photoThumb && (
+                    <img src={photoThumb} alt="" className="absolute inset-0 w-full h-full object-cover rounded-[10px] opacity-20 pointer-events-none" />
+                  )}
+                  <div className="relative flex items-center justify-between mb-1">
+                    <span className="font-semibold text-sm text-gray-900 truncate flex-1 mr-2">
                       {z.name || `Zone ${z.number}`}
                     </span>
-                    {(isRunning || isPending) && (
-                      <span className="animate-bounce text-base leading-none">💦</span>
+                    {isRunning && <span className="animate-bounce text-base leading-none">💦</span>}
+                    {isPending && <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
+                  </div>
+                  <div className="relative flex justify-between items-end">
+                    <p className="text-xs h-4 font-medium"
+                      style={{ color: isRunning ? '#16a34a' : 'transparent' }}>
+                      {isRunning
+                        ? z.source === 'scheduler'
+                          ? `▶ ${formatRuntime(z.runtimeSeconds)} (Scheduled)`
+                          : `▶ ${formatRuntime(z.runtimeSeconds)}`
+                        : '.'}
+                    </p>
+                    {photoThumb && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPreviewPhoto(previewPhoto === photoThumb ? null : photoThumb); }}
+                        className="text-gray-700 text-xl font-bold leading-none px-2 hover:text-gray-900"
+                        title="View photo"
+                      >{previewPhoto === photoThumb ? '▴' : '▾'}</button>
                     )}
                   </div>
-                  <p className={`text-xs h-4 ${
-                    isRunning ? 'text-green-600 font-medium' :
-                    isPending ? 'text-amber-500 font-medium' : 'text-transparent'
-                  }`}>
-                    {isRunning ? `▶ ${formatRuntime(z.runtimeSeconds)}` : isPending ? '…' : '.'}
-                  </p>
+                  <input
+                    ref={el => { fileInputRefs.current[z.number] = el; }}
+                    type="file" accept="image/*" className="hidden"
+                    onChange={e => uploadWebPhoto(z.number, e)}
+                  />
                 </div>
               );
             })}
           </div>
+
+          {previewPhoto && (
+            <div
+              className="overflow-hidden rounded-xl mt-3 cursor-pointer"
+              onClick={() => setPreviewPhoto(null)}
+            >
+              <img src={previewPhoto} alt="" className="w-full aspect-video object-cover rounded-xl" />
+            </div>
+          )}
+
+          {editingZone !== null && (() => {
+            const ez = zones.find(zz => zz.number === editingZone);
+            const thumb = ez?.photoUrl ? `${BACKEND_URL}${ez.photoUrl}` : null;
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingZone(null)}>
+                <div className="bg-white rounded-xl shadow-xl w-80 p-5" onClick={e => e.stopPropagation()}>
+                  <div className="flex gap-4 mb-4">
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-400 mb-1">Zone {editingZone}</p>
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={e => setEditingName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const name = editingName.trim() || `Zone ${editingZone}`;
+                            setZoneEdits(prev => ({ ...prev, [editingZone!]: name }));
+                            saveZoneName(editingZone!);
+                            setEditingZone(null);
+                          }
+                        }}
+                        maxLength={31}
+                        autoFocus
+                        className="w-full text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1a56db]"
+                      />
+                    </div>
+                    <label className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:border-[#1a56db] transition-colors flex items-center justify-center bg-gray-50">
+                      {thumb
+                        ? <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        : <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6 text-gray-400">
+                            <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 0 1 3.25 3h13.5A2.25 2.25 0 0 1 19 5.25v9.5A2.25 2.25 0 0 1 16.75 17H3.25A2.25 2.25 0 0 1 1 14.75v-9.5Zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 0 0 .75-.75v-2.69l-2.22-2.219a.75.75 0 0 0-1.06 0l-1.91 1.909-4.72-4.719a.75.75 0 0 0-1.06 0L2.5 11.06Zm6-3.31a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0Z" clipRule="evenodd" />
+                          </svg>
+                      }
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { uploadWebPhoto(editingZone!, e); setEditingZone(null); }} />
+                    </label>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditingZone(null)} className="text-sm text-gray-500 px-3 py-1.5 rounded-md hover:bg-gray-100">Cancel</button>
+                    <button
+                      onClick={() => {
+                        const name = editingName.trim() || `Zone ${editingZone}`;
+                        setZoneEdits(prev => ({ ...prev, [editingZone!]: name }));
+                        saveZoneName(editingZone!);
+                        setEditingZone(null);
+                      }}
+                      className="text-sm font-semibold text-white bg-[#1a56db] px-3 py-1.5 rounded-md hover:bg-blue-700"
+                    >Save</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 
+      {/* ── Schedules tab ── */}
       {tab === 'Schedules' && (
         <div>
           {editingSchedule !== null ? (
@@ -298,11 +507,8 @@ export default function ControllerPage() {
               <div className="space-y-3">
                 {schedules.length === 0 && (
                   <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-                    <p className="text-gray-600 font-medium mb-1">No schedules in the cloud yet.</p>
-                    <p className="text-gray-400 text-sm mb-4">
-                      Schedules created on the mobile app live only on the controller until recreated here.
-                      Use the mobile app to see existing schedules, or create new ones below.
-                    </p>
+                    <p className="text-gray-600 font-medium mb-1">No schedules yet.</p>
+                    <p className="text-gray-400 text-sm mb-4">Schedules created on the mobile app sync here automatically.</p>
                     <button onClick={() => setEditingSchedule('new')}
                       className="text-[#1a56db] text-sm font-semibold hover:underline">
                       Create your first schedule →
@@ -322,62 +528,211 @@ export default function ControllerPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleScheduleActive(s); }}
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
+                            s.active && isInDateRange(s)
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : s.active
+                              ? 'bg-blue-50 text-blue-500 hover:bg-blue-100'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                          }`}>
+                          {s.active && isInDateRange(s) ? '● Running' : s.active ? '● Enabled' : '○ Disabled'}
+                        </button>
                         <button onClick={e => { e.stopPropagation(); deleteSchedule(s.uuid!); }}
                           className="text-xs text-red-400 hover:text-red-600 px-2 py-1">🗑</button>
-                        {isScheduleActive(s) && (
-                          <span className="text-xs font-semibold px-3 py-1.5 bg-green-100 text-green-700 rounded-full">
-                            ● Active
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-
-              {/* Info — below the list */}
               <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
                 <p className="font-semibold">About Schedules</p>
-                <p>A schedule defines when your zones run automatically. The active schedule is determined automatically by today's date — whichever schedule's date range includes today is active and runs.</p>
-                <p>You can have up to <strong>5 schedules</strong> stored on the controller, with up to <strong>24 zone entries</strong> each. Schedules must not have overlapping date ranges.</p>
-                <p>Common use: one schedule for summer (Jun–Aug), one for fall (Sep–May). When today moves into the fall range, it automatically becomes active.</p>
+                <p>The active schedule is determined by today's date — whichever schedule's date range includes today runs automatically.</p>
+                <p>Up to <strong>5 schedules</strong> per controller, <strong>24 zone entries</strong> each. Date ranges must not overlap.</p>
               </div>
             </>
           )}
         </div>
       )}
 
-      {tab === 'Logs' && (
-        <div className="space-y-2">
-          {logs.length === 0 && (
-            <div className="bg-white rounded-xl shadow-sm p-10 text-center">
-              <p className="text-gray-400">No activity recorded yet.</p>
+      {/* ── Settings tab ── */}
+      {tab === 'Settings' && (
+        <div className="space-y-6">
+          {/* Controller Name */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Controller</h3>
+            </div>
+            <div className="flex items-center gap-3 px-5 py-3">
+              <input
+                type="text"
+                value={nameEdit}
+                onChange={e => setNameEdit(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveDeviceName(); }}
+                placeholder="Controller name"
+                maxLength={64}
+                className={`flex-1 text-sm border rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1a56db] ${
+                  nameEdit !== deviceName ? 'border-[#1a56db]' : 'border-gray-200'
+                }`}
+              />
+              <button
+                onClick={saveDeviceName}
+                disabled={!nameEdit.trim() || nameEdit === deviceName || savingName}
+                className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-colors ${
+                  nameEdit.trim() && nameEdit !== deviceName && !savingName
+                    ? 'bg-[#1a56db] text-white hover:bg-blue-700'
+                    : 'bg-gray-100 text-gray-400 cursor-default'
+                }`}
+              >
+                {savingName ? '…' : 'Save'}
+              </button>
+            </div>
+          </div>
+
+          {/* Zones */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Zones</h3>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {zones.map(z => {
+                const val   = zoneEdits[z.number] ?? z.name ?? '';
+                const dirty = val !== (z.name ?? '');
+                const thumb = z.photoUrl ? `${BACKEND_URL}${z.photoUrl}` : null;
+                return (
+                  <div key={z.number} className="flex items-center gap-3 px-5 py-3">
+                    <span className="text-sm text-gray-400 w-8 flex-shrink-0">#{z.number}</span>
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={e => setZoneEdits(prev => ({ ...prev, [z.number]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') saveZoneName(z.number); }}
+                      placeholder={`Zone ${z.number}`}
+                      maxLength={31}
+                      className={`flex-1 text-sm border rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1a56db] ${
+                        dirty ? 'border-[#1a56db]' : 'border-gray-200'
+                      }`}
+                    />
+                    <button
+                      onClick={() => saveZoneName(z.number)}
+                      disabled={!dirty || savingZone === z.number}
+                      className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-colors ${
+                        dirty && savingZone !== z.number
+                          ? 'bg-[#1a56db] text-white hover:bg-blue-700'
+                          : 'bg-gray-100 text-gray-400 cursor-default'
+                      }`}
+                    >
+                      {savingZone === z.number ? '…' : 'Save'}
+                    </button>
+                    <label className="cursor-pointer flex-shrink-0 w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">
+                      {thumb
+                        ? <img src={thumb} alt="" className="w-8 h-[18px] rounded-sm object-cover" />
+                        : <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-gray-500"><path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 0 1 3.25 3h13.5A2.25 2.25 0 0 1 19 5.25v9.5A2.25 2.25 0 0 1 16.75 17H3.25A2.25 2.25 0 0 1 1 14.75v-9.5Zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 0 0 .75-.75v-2.69l-2.22-2.219a.75.75 0 0 0-1.06 0l-1.91 1.909-4.72-4.719a.75.75 0 0 0-1.06 0L2.5 11.06Zm6-3.31a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0Z" clipRule="evenodd" /></svg>}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => uploadWebPhoto(z.number, e)} />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Device info */}
+          {(deviceStatus.firmware || deviceStatus.mac) && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-900">Device</h3>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {deviceStatus.firmware && <InfoRow label="Firmware" value={deviceStatus.firmware} />}
+                {deviceStatus.mac      && <InfoRow label="MAC" value={deviceStatus.mac} />}
+                {deviceStatus.ip       && <InfoRow label="IP" value={deviceStatus.ip} />}
+                {deviceStatus.uptime_seconds != null && (
+                  <InfoRow label="Uptime" value={formatUptime(deviceStatus.uptime_seconds)} />
+                )}
+              </div>
             </div>
           )}
-          {logs.map((e, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center">
-              <div>
-                <p className="font-medium text-gray-900">Zone {e.zoneNumber}</p>
-                <p className="text-sm text-gray-400">
-                  {Math.floor(e.durationSeconds / 60)}m {e.durationSeconds % 60}s · {e.source}
-                </p>
-              </div>
-              <p className="text-sm text-gray-400">
-                {new Date(e.startedAt).toLocaleString(undefined, {
-                  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                })}
-              </p>
-            </div>
-          ))}
+
+          {/* Activity Log */}
+          <ActivityLog logs={logs} zones={zones} />
         </div>
       )}
 
-      {/* Firmware info footer */}
       {deviceStatus.firmware && (
         <div className="mt-8 pt-4 border-t border-gray-200 flex items-center gap-4 text-xs text-gray-400">
           <span>Firmware: {deviceStatus.firmware}</span>
-          {deviceStatus.uptime_seconds && <span>Uptime: {formatUptime(deviceStatus.uptime_seconds)}</span>}
+          {deviceStatus.uptime_seconds != null && <span>Uptime: {formatUptime(deviceStatus.uptime_seconds)}</span>}
+          {WEB_DEBUG && (
+            <span className="ml-auto bg-red-600 text-white text-[10px] font-bold tracking-wide rounded px-1.5 py-0.5 opacity-85">DEBUG</span>
+          )}
         </div>
+      )}
+
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center px-5 py-3">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm text-gray-900 font-medium">{value}</span>
+    </div>
+  );
+}
+
+function formatSource(source: string): string {
+  if (source === 'MQTT' || source === 'manual' || source === 'app') return 'Manual';
+  if (source === 'scheduler' || source === 'schedule') return 'Schedule';
+  return source;
+}
+
+function formatLogDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday     = d.toDateString() === now.toDateString();
+  const yesterday   = new Date(now); yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (isToday)     return `Today ${time}`;
+  if (isYesterday) return `Yesterday ${time}`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+
+function ActivityLog({ logs, zones }: { logs: LogEntry[]; zones: ZoneLive[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+      >
+        <h3 className="font-semibold text-gray-900">Activity Log</h3>
+        <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        logs.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">No activity recorded yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {logs.map((e, i) => {
+              const zoneName = zones.find(z => z.number === e.zoneNumber)?.name || `Zone ${e.zoneNumber}`;
+              const duration = formatDuration(e.durationSeconds);
+              const source   = formatSource(e.source);
+              const date     = formatLogDate(e.startedAt);
+              return (
+                <div key={i} className="flex justify-between items-center px-5 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{zoneName}</p>
+                    <p className="text-xs text-gray-400">{duration} · {source}</p>
+                  </div>
+                  <p className="text-xs text-gray-400 text-right">{date}</p>
+                </div>
+              );
+            })}
+          </div>
+        )
       )}
     </div>
   );

@@ -5,7 +5,6 @@ const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
 async function handler(req: NextRequest, { params }: { params: { path: string[] } }) {
   try {
-    // Try getAccessToken first; fall back to session.accessToken if it fails
     let accessToken: string | undefined;
     try {
       const result = await getAccessToken();
@@ -19,16 +18,28 @@ async function handler(req: NextRequest, { params }: { params: { path: string[] 
       console.error('[proxy] No access token available');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-    const url  = `${BACKEND}/${params.path.join('/')}${req.nextUrl.search}`;
-    const init: RequestInit = {
-      method:  req.method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-    };
-    if (req.method !== 'GET' && req.method !== 'HEAD') init.body = await req.text();
-    const res  = await fetch(url, init);
-    const body = await res.text();
-    return new NextResponse(body, {
-      status:  res.status,
+
+    const url = `${BACKEND}/${params.path.join('/')}${req.nextUrl.search}`;
+    const contentType = req.headers.get('content-type') ?? '';
+    const isMultipart = contentType.includes('multipart/form-data');
+
+    const headers: Record<string, string> = { 'Authorization': `Bearer ${accessToken}` };
+    if (!isMultipart) headers['Content-Type'] = 'application/json';
+
+    let body: BodyInit | undefined;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      body = isMultipart ? await req.arrayBuffer() : await req.text();
+    }
+
+    const init: RequestInit = { method: req.method, headers, body };
+    if (isMultipart) {
+      (init.headers as Record<string, string>)['Content-Type'] = contentType;
+    }
+
+    const res = await fetch(url, init);
+    const resBody = await res.text();
+    return new NextResponse(resBody, {
+      status: res.status,
       headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },
     });
   } catch (err: any) {

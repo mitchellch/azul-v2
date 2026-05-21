@@ -31,6 +31,9 @@ time_t TimeManager::now() const {
     time_t t;
     ::time(&t);
     if (t < 1000000000L) return 0;
+#ifdef DEBUG_BUILD
+    t += _warpOffset;
+#endif
     return t;
 }
 
@@ -137,3 +140,10 @@ void TimeManager::loadFromNvs() {
 void TimeManager::applyTz() {
     configTime(_tzOffset + _dstOffset, 0, "pool.ntp.org", "time.nist.gov");
 }
+
+#ifdef DEBUG_BUILD
+void TimeManager::setTimeWarp(int32_t offsetSec) {
+    _warpOffset = offsetSec;
+    Logger::log("[Time] DEBUG time-warp: %+d seconds", offsetSec);
+}
+#endif

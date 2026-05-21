@@ -2,6 +2,19 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type ConnectionGrade = 'good' | 'degraded' | 'poor' | 'offline';
+
+type CloudGradeStore = {
+  grades: Map<string, ConnectionGrade>; // keyed by controller id
+  setGrade: (id: string, grade: ConnectionGrade) => void;
+};
+
+export const useCloudGradeStore = create<CloudGradeStore>()((set) => ({
+  grades: new Map(),
+  setGrade: (id, grade) =>
+    set((s) => ({ grades: new Map(s.grades).set(id, grade) })),
+}));
+
 export type ConnectionMode = 'ble' | 'cloud';
 
 export type Controller = {
@@ -16,6 +29,8 @@ export type Controller = {
   cloudId?: string;    // Backend Device.id after registering with cloud
   mac?: string;        // Device MAC address (from BLE deviceId on Android)
   connectionMode?: ConnectionMode; // defaults to 'ble' if not set
+  skipStopAllConfirm?: boolean;        // user opted out of Stop All confirmation
+  skipScheduleStopConfirm?: boolean;   // user opted out of scheduled-zone stop confirmation
 };
 
 type ControllerStore = {

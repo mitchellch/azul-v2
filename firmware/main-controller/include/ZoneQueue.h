@@ -41,7 +41,7 @@ public:
     std::function<void(uint8_t, uint16_t, uint8_t)> onZoneStart;
 
     // Optional callback: called when a running zone stops (timer expired or cancelled).
-    std::function<void()> onZoneStop;
+    std::function<void(uint8_t zoneId)> onZoneStop;
 
     uint8_t count() const { return _count; }
     bool    isEmpty() const { return _count == 0; }
@@ -59,6 +59,7 @@ private:
     uint8_t    _tail;        // next to enqueue
     uint8_t    _count;
     bool       _wasRunning = false;
+    uint8_t    _lastRunningZone = 0;
 
     bool dequeue(QueueEntry& out);
 };

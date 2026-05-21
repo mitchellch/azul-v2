@@ -99,6 +99,11 @@ export function stopScan(): void {
 // ---------------------------------------------------------------------------
 
 export async function connect(deviceId: string): Promise<Device> {
+  // Cancel any stale connection first — avoids "Device already connected" error on Android
+  try {
+    const existing = await manager.isDeviceConnected(deviceId);
+    if (existing) await manager.cancelDeviceConnection(deviceId);
+  } catch { /* ignore — device may not be connected */ }
   const device = await manager.connectToDevice(deviceId, { requestMTU: 512 });
   await device.discoverAllServicesAndCharacteristics();
   _subscribeToResponses(device);

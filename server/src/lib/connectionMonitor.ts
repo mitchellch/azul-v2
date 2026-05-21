@@ -34,6 +34,13 @@ function prune(m: DeviceMetrics) {
   m.pings = m.pings.filter(p => p.ts >= cutoff);
 }
 
+// Called immediately when the broker delivers the LWT (TCP disconnect).
+export function recordDisconnect(mac: string) {
+  const m = getOrCreate(mac);
+  m.pings = []; // clear window so next getConnectionStatus returns 'offline' immediately
+  m.lastSeen = 0;
+}
+
 // Called by MQTT handler every time a status message arrives from a device.
 export function recordPing(mac: string) {
   const m = getOrCreate(mac);
@@ -83,7 +90,7 @@ export function getConnectionStatus(mac: string): ConnectionStatus {
   let status: ConnectionGrade;
   let reason: string;
 
-  if (ageSec > 120) {
+  if (ageSec > 90) {
     status = 'offline';
     reason = `No message for ${Math.round(ageSec)}s`;
   } else if (ageSec > 60 || missedPings >= 3) {

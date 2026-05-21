@@ -33,7 +33,12 @@ ZoneLed        zoneLed(zones);
 #define BLE_NOTIFY_INTERVAL_MS    5000
 #define WIFI_CHECK_INTERVAL_MS   30000
 #define NTP_SYNC_INTERVAL_MS   3600000
-#define MQTT_PUBLISH_INTERVAL_MS 60000
+
+#ifdef DEBUG_BUILD
+  #define MQTT_PUBLISH_INTERVAL_MS  5000
+#else
+  #define MQTT_PUBLISH_INTERVAL_MS 60000
+#endif
 
 unsigned long lastBleNotify  = 0;
 unsigned long lastWifiCheck  = 0;

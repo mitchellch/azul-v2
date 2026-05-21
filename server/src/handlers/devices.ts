@@ -5,6 +5,7 @@ import { assertDeviceAccess } from '../lib/deviceAccess';
 import { sseRegistry } from '../lib/sseRegistry';
 import { HttpError } from '../middleware/errorHandler';
 import { getConnectionStatus } from '../lib/connectionMonitor';
+import { zoneStateCache } from '../lib/zoneStateCache';
 import { z } from 'zod';
 
 export const devicesRouter = Router();
@@ -12,23 +13,80 @@ export const devicesRouter = Router();
 // GET /api/devices — list devices owned by the authenticated user
 devicesRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const where = req.user!.isM2M ? {} : { userId: req.user!.id };
+    const devices = await db.device.findMany({
+      where,
+      orderBy: { lastSeenAt: 'desc' },
+      include: { zones: { orderBy: { number: 'asc' } }, schedules: { where: { active: true }, select: { uuid: true } } },
+    });
+    res.json(devices.map(d => ({
+      ...d,
+      hasActiveSchedule: d.schedules.length > 0,
+      activeScheduleUuid: d.schedules[0]?.uuid ?? null,
+      schedules: undefined,
+    })));
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/stream — SSE for ALL user devices (must be before /:mac to avoid shadowing)
+devicesRouter.get('/stream', async (req: Request, res: Response, next: NextFunction) => {
+  try {
     const devices = await db.device.findMany({
       where:   { userId: req.user!.id },
-      orderBy: { lastSeenAt: 'desc' },
       include: { zones: { orderBy: { number: 'asc' } } },
     });
-    res.json(devices);
+
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    for (const device of devices) {
+      const liveZones = zoneStateCache.get(device.mac);
+      if (liveZones.length > 0) {
+        const liveMap = new Map(liveZones.map(z => [z.id, z]));
+        device.zones = device.zones.map(z => {
+          const live = liveMap.get(z.number);
+          if (!live) return z;
+          return { ...z, status: live.status, runtime_seconds: live.runtime } as any;
+        });
+      }
+      res.write(`data: ${JSON.stringify({ type: 'snapshot', mac: device.mac, device })}\n\n`);
+    }
+
+    const unsubs = devices.map(d =>
+      sseRegistry.subscribe(d.mac, (event) => {
+        res.write(`data: ${JSON.stringify({ ...event, mac: d.mac })}\n\n`);
+      })
+    );
+
+    const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 30_000);
+    req.on('close', () => { unsubs.forEach(u => u()); clearInterval(heartbeat); });
   } catch (err) { next(err); }
 });
 
 // GET /api/devices/:mac — get single device (must be owned by user)
 devicesRouter.get('/:mac', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
-    const full   = await db.device.findUnique({
+    await assertDeviceAccess(req.params.mac, req.user!.id);
+    const full = await db.device.findUnique({
       where:   { mac: req.params.mac },
       include: { zones: { orderBy: { number: 'asc' } }, schedules: { include: { runs: true } } },
     });
+    if (!full) { next(new HttpError(404, 'Device not found')); return; }
+
+    // Merge live zone state from MQTT cache
+    const liveZones = zoneStateCache.get(req.params.mac);
+    if (liveZones.length > 0) {
+      const liveMap = new Map(liveZones.map(z => [z.id, z]));
+      full.zones = full.zones.map(z => {
+        const live = liveMap.get(z.number);
+        if (!live) return z;
+        return { ...z, status: live.status, runtime_seconds: live.runtime, source: live.source } as any;
+      });
+    }
+
     res.json(full);
   } catch (err) { next(err); }
 });
@@ -117,6 +175,9 @@ devicesRouter.post('/:mac/zones/:zoneNumber/start', async (req: Request, res: Re
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     const duration   = (req.body.duration as number) ?? 60;
     if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
+    const anyRunning = zoneStateCache.get(req.params.mac).some(z => z.status === 'running');
+    zoneStateCache.patch(req.params.mac, zoneNumber, { status: anyRunning ? 'pending' : 'running', runtime: duration, source: 'REST' });
+    sseRegistry.emit(req.params.mac, { type: 'status', zones: zoneStateCache.get(req.params.mac).map(z => ({ id: z.id, status: z.status, runtime_seconds: z.runtime, source: z.source })) });
     mqttClient.publish(req.params.mac, 'zone/start', { zone: zoneNumber, duration });
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -127,6 +188,8 @@ devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Res
   try {
     await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
+    zoneStateCache.patch(req.params.mac, zoneNumber, { status: 'idle', runtime: 0, source: undefined });
+    sseRegistry.emit(req.params.mac, { type: 'status', zones: zoneStateCache.get(req.params.mac).map(z => ({ id: z.id, status: z.status, runtime_seconds: z.runtime, source: z.source })) });
     mqttClient.publish(req.params.mac, 'zone/stop', { zone: zoneNumber });
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -141,7 +204,7 @@ devicesRouter.get('/:mac/connection-status', async (req: Request, res: Response,
   } catch (err) { next(err); }
 });
 
-// GET /api/devices/:mac/stream — SSE real-time status
+// GET /api/devices/:mac/stream — single-device SSE (kept for compatibility)
 devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const device = await assertDeviceAccess(req.params.mac, req.user!.id);
@@ -149,22 +212,30 @@ devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: Next
     res.setHeader('Content-Type',  'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection',    'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if proxied
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Send current snapshot immediately
     const full = await db.device.findUnique({
       where:   { mac: req.params.mac },
       include: { zones: { orderBy: { number: 'asc' } } },
     });
-    res.write(`data: ${JSON.stringify({ type: 'snapshot', device: full })}\n\n`);
+    if (full) {
+      const liveZones = zoneStateCache.get(req.params.mac);
+      if (liveZones.length > 0) {
+        const liveMap = new Map(liveZones.map(z => [z.id, z]));
+        full.zones = full.zones.map(z => {
+          const live = liveMap.get(z.number);
+          if (!live) return z;
+          return { ...z, status: live.status, runtime_seconds: live.runtime, source: live.source } as any;
+        });
+      }
+    }
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', mac: req.params.mac, device: full })}\n\n`);
 
-    // Subscribe to live updates
     const unsubscribe = sseRegistry.subscribe(req.params.mac, (event) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      res.write(`data: ${JSON.stringify({ ...event, mac: req.params.mac })}\n\n`);
     });
 
-    // Send a heartbeat every 30s to keep the connection alive through proxies
     const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 30_000);
 
     req.on('close', () => {
@@ -178,6 +249,9 @@ devicesRouter.get('/:mac/stream', async (req: Request, res: Response, next: Next
 devicesRouter.post('/:mac/zones/stop-all', async (req: Request, res: Response, next: NextFunction) => {
   try {
     await assertDeviceAccess(req.params.mac, req.user!.id);
+    const cached = zoneStateCache.get(req.params.mac);
+    for (const z of cached) zoneStateCache.patch(req.params.mac, z.id, { status: 'idle', runtime: 0, source: undefined });
+    sseRegistry.emit(req.params.mac, { type: 'status', zones: zoneStateCache.get(req.params.mac).map(z => ({ id: z.id, status: z.status, runtime_seconds: z.runtime, source: z.source })) });
     mqttClient.publish(req.params.mac, 'zone/stop-all', {});
     res.json({ ok: true });
   } catch (err) { next(err); }

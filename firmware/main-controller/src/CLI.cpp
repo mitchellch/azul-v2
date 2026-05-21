@@ -212,6 +212,9 @@ uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
     "wifi-set", "wifi-status", "mqtt-set", "mqtt-status", "version",
     "schedule", "schedules", "log",
     "tz-get", "tz-set", "nvs-dump", "reboot"
+#ifdef DEBUG_BUILD
+    , "time-warp"
+#endif
   };
   static const uint8_t cmdCount = sizeof(cmds) / sizeof(cmds[0]);
 
@@ -278,6 +281,9 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "tz-set")      == 0) cmdTzSet(args);
   else if (strcmp(cmd, "nvs-dump")    == 0) cmdNvsDump();
   else if (strcmp(cmd, "reboot")      == 0) cmdReboot();
+#ifdef DEBUG_BUILD
+  else if (strcmp(cmd, "time-warp")   == 0) cmdTimeWarp(args);
+#endif
   else Serial.printf("Unknown command: '%s'. Type 'help'.\r\n", cmd);
 }
 
@@ -304,6 +310,12 @@ void CLI::printHelp() {
   Serial.println("  nvs-dump                  Dump all NVS config (password masked)");
   Serial.println("  TAB                       Complete or list matching commands");
   Serial.println("  Ctrl-U                    Clear current line");
+#ifdef DEBUG_BUILD
+  Serial.println();
+  Serial.println("  [DEBUG]");
+  Serial.println("  time-warp <seconds>       Shift clock by N seconds (negative to go back)");
+  Serial.println("  time-warp 0               Reset to real time");
+#endif
 }
 
 void CLI::cmdStatus() {
@@ -699,6 +711,32 @@ void CLI::cmdTzSet(const char* args) {
   _time.formatOffset(buf);
   Serial.printf("Timezone set to %s. Reboot to apply to NTP.\r\n", buf);
 }
+
+#ifdef DEBUG_BUILD
+void CLI::cmdTimeWarp(const char* args) {
+  if (!args || args[0] == '\0') {
+    int32_t current = _time.getTimeWarp();
+    if (current == 0) {
+      Serial.println("Time-warp: off (real time)");
+    } else {
+      Serial.printf("Time-warp: %+d seconds\r\n", current);
+    }
+    Serial.println("Usage: time-warp <seconds>  (e.g. 3600 = +1hr, -86400 = -1 day, 0 = reset)");
+    return;
+  }
+  int32_t offset = atoi(args);
+  _time.setTimeWarp(offset);
+  _scheduler.resetFiredFlags();
+
+  struct tm t;
+  if (_time.getLocalTime(t)) {
+    char timeBuf[32];
+    strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &t);
+    Serial.printf("Warped time: %s (offset: %+d seconds)\r\n", timeBuf, offset);
+  }
+  if (offset == 0) Serial.println("Clock reset to real time");
+}
+#endif
 
 void CLI::cmdReboot() {
   Serial.println("Rebooting...");

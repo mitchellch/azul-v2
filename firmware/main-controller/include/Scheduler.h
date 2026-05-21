@@ -39,6 +39,7 @@ public:
     bool getAllSchedules(Schedule* out, uint8_t& count) const;
 
     bool isTimeSynced() const;
+    void resetFiredFlags();
 
 private:
     TimeManager&    _time;

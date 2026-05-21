@@ -97,10 +97,11 @@ model Device {
 // ---------------------------------------------------------------------------
 
 model Zone {
-  id       String @id @default(uuid())
-  deviceId String @map("device_id")
+  id       String  @id @default(uuid())
+  deviceId String  @map("device_id")
   number   Int
-  name     String @default("")
+  name     String  @default("")
+  photoUrl String? @map("photo_url")
 
   device       Device        @relation(fields: [deviceId], references: [id])
   auditLog     AuditLog[]

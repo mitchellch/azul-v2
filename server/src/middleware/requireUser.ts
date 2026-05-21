@@ -6,11 +6,11 @@ declare module 'express' {
   interface Request { auth?: Record<string, unknown>; }
 }
 
-// Augment Express Request to carry the resolved User
+// Augment Express Request to carry the resolved actor (user or M2M)
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; auth0Sub: string; email: string; name: string | null };
+      user?: { id: string; auth0Sub: string; email: string; name: string | null; isM2M?: boolean };
     }
   }
 }
@@ -25,9 +25,10 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  // Block M2M / client-credentials tokens from creating user records
+  // M2M / client-credentials tokens: synthetic user with full access
   if (sub.endsWith('@clients')) {
-    res.status(403).json({ error: 'Machine tokens cannot access user endpoints' });
+    req.user = { id: sub, auth0Sub: sub, email: 'support@azul.internal', name: 'M2M', isM2M: true };
+    next();
     return;
   }
 

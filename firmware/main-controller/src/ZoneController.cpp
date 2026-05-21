@@ -14,11 +14,12 @@ ZoneController::ZoneController() : _lastTickMs(0) {
   }
 }
 
-bool ZoneController::startZone(uint8_t zoneId, uint32_t durationSeconds) {
+bool ZoneController::startZone(uint8_t zoneId, uint32_t durationSeconds, uint8_t source) {
   if (zoneId < 1 || zoneId > MAX_ZONES) return false;
   Zone& z = _zones[zoneId - 1];
   z.status = ZoneStatus::RUNNING;
   z.runtimeSeconds = durationSeconds;
+  z.source = source;
   return true;
 }
 
@@ -27,6 +28,7 @@ bool ZoneController::stopZone(uint8_t zoneId) {
   Zone& z = _zones[zoneId - 1];
   z.status = ZoneStatus::IDLE;
   z.runtimeSeconds = 0;
+  z.source = 0;
   return true;
 }
 
@@ -34,6 +36,7 @@ bool ZoneController::stopAll() {
   for (uint8_t i = 0; i < MAX_ZONES; i++) {
     _zones[i].status = ZoneStatus::IDLE;
     _zones[i].runtimeSeconds = 0;
+    _zones[i].source = 0;
   }
   return true;
 }
