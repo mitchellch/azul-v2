@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { db } from '../db/client';
 import { assertDeviceAccess } from '../lib/deviceAccess';
+import { logEvent } from '../lib/eventLog';
 import { HttpError } from '../middleware/errorHandler';
 
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/zones');
@@ -55,6 +56,7 @@ zonesRouter.put('/:mac/zones/:zoneNumber', async (req: Request, res: Response, n
       update: { name: name.trim() },
       create: { deviceId: device.id, number: zoneNumber, name: name.trim() },
     });
+    logEvent(device.id, 'config', 'zone_rename', { zone: zoneNumber, name: name.trim() });
     res.json(zone);
   } catch (err) { next(err); }
 });
@@ -83,6 +85,7 @@ zonesRouter.put('/:mac/zones/:zoneNumber/photo', upload.single('photo'), async (
       update: { photoUrl },
       create: { deviceId: device.id, number: zoneNumber, photoUrl },
     });
+    logEvent(device.id, 'config', 'zone_photo_set', { zone: zoneNumber });
     res.json(zone);
   } catch (err) { next(err); }
 });
@@ -104,6 +107,7 @@ zonesRouter.delete('/:mac/zones/:zoneNumber/photo', async (req: Request, res: Re
         where: { deviceId_number: { deviceId: device.id, number: zoneNumber } },
         data:  { photoUrl: null },
       });
+      logEvent(device.id, 'config', 'zone_photo_remove', { zone: zoneNumber });
     }
     res.json({ ok: true });
   } catch (err) { next(err); }

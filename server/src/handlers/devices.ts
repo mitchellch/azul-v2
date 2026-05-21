@@ -6,6 +6,7 @@ import { sseRegistry } from '../lib/sseRegistry';
 import { HttpError } from '../middleware/errorHandler';
 import { getConnectionStatus } from '../lib/connectionMonitor';
 import { zoneStateCache } from '../lib/zoneStateCache';
+import { logEvent } from '../lib/eventLog';
 import { z } from 'zod';
 
 export const devicesRouter = Router();
@@ -155,6 +156,7 @@ devicesRouter.patch('/:mac', async (req: Request, res: Response, next: NextFunct
     const { name } = req.body;
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'name required');
     const device = await db.device.update({ where: { mac: req.params.mac }, data: { name: name.trim() } });
+    logEvent(device.id, 'config', 'device_rename', { name: name.trim() });
     res.json(device);
   } catch (err) { next(err); }
 });

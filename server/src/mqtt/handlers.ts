@@ -3,6 +3,7 @@ import { sseRegistry } from '../lib/sseRegistry';
 import { recordPing, recordDisconnect } from '../lib/connectionMonitor';
 import { zoneStateCache } from '../lib/zoneStateCache';
 import { toPayload } from '../lib/scheduleSerializer';
+import { logEvent } from '../lib/eventLog';
 
 type PublishFn = (mac: string, command: string, payload: object) => void;
 let _publish: PublishFn = () => {};
@@ -123,12 +124,12 @@ export async function handleDeviceEvent(mac: string, data: Record<string, unknow
   const source          = (data.source  as string) ?? 'scheduler';
   const ts              = data.ts ? new Date((data.ts as number) * 1000) : new Date();
 
-  // Only write audit log for zone_start (or legacy zone_run)
-  if (type !== 'zone_stop') {
-    try {
-      const device = await db.device.findUnique({ where: { mac } });
-      if (!device) return;
+  try {
+    const device = await db.device.findUnique({ where: { mac } });
+    if (!device) return;
 
+    // Legacy audit log (zone_start only)
+    if (type !== 'zone_stop') {
       const zone = await db.zone.upsert({
         where:  { deviceId_number: { deviceId: device.id, number: zoneNumber } },
         update: {},
@@ -145,9 +146,14 @@ export async function handleDeviceEvent(mac: string, data: Record<string, unknow
           source,
         },
       });
-    } catch (err: any) {
-      console.error('[MQTT] handleDeviceEvent error:', err.message);
     }
+
+    // Event log (all zone events)
+    await logEvent(device.id, 'zone', type === 'zone_stop' ? 'zone_stop' : 'zone_start', {
+      zone: zoneNumber, duration: durationSeconds, source,
+    });
+  } catch (err: any) {
+    console.error('[MQTT] handleDeviceEvent error:', err.message);
   }
 }
 

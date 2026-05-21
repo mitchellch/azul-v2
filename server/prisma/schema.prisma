@@ -88,6 +88,7 @@ model Device {
   zones        Zone[]
   schedules    Schedule[]
   auditLog     AuditLog[]
+  eventLog     EventLog[]
 
   @@map("devices")
 }
@@ -150,7 +151,7 @@ model ScheduleRun {
 }
 
 // ---------------------------------------------------------------------------
-// Audit log
+// Audit log (legacy — zone activations only)
 // ---------------------------------------------------------------------------
 
 model AuditLog {
@@ -166,4 +167,28 @@ model AuditLog {
   zone   Zone?  @relation(fields: [zoneId], references: [id])
 
   @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Event log (partitioned — all event types)
+// ---------------------------------------------------------------------------
+// NOTE: Prisma doesn't support partitioned tables natively.
+// The actual table is created via raw SQL in the migration as:
+//   CREATE TABLE event_log (...) PARTITION BY RANGE (created_at);
+// This model exists so Prisma client can query it. The migration
+// uses `@@ignore` workaround — see migration SQL for details.
+
+model EventLog {
+  id        String   @id @default(uuid())
+  deviceId  String   @map("device_id")
+  category  String   // "zone" | "schedule" | "config" | "system"
+  action    String   // "zone_start" | "zone_stop" | "schedule_create" | "schedule_update" | "schedule_delete" | "schedule_activate" | "schedule_deactivate" | "zone_rename" | "device_rename" | "error" | ...
+  metadata  Json?    // event-specific payload (zone number, duration, schedule name, error message, etc.)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId, createdAt])
+  @@index([createdAt])
+  @@map("event_log")
 }

@@ -4,6 +4,7 @@ import { db } from '../db/client';
 import { mqttClient } from '../mqtt/client';
 import { assertDeviceAccess } from '../lib/deviceAccess';
 import { toPayload } from '../lib/scheduleSerializer';
+import { logEvent } from '../lib/eventLog';
 import { HttpError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -120,6 +121,7 @@ schedulesRouter.post('/', async (req: Request, res: Response, next: NextFunction
     });
 
     mqttClient.publish(req.params.mac, 'schedule/set', toPayload(schedule));
+    logEvent(device.id, 'schedule', 'schedule_create', { uuid, name, zones: runs.length });
     res.status(201).json(toPayload(schedule));
   } catch (err) { next(err); }
 });
@@ -163,6 +165,7 @@ schedulesRouter.put('/:uuid', async (req: Request, res: Response, next: NextFunc
     });
 
     mqttClient.publish(req.params.mac, 'schedule/set', toPayload(schedule));
+    logEvent(device.id, 'schedule', 'schedule_update', { uuid: req.params.uuid, name, zones: runs.length });
     res.json(toPayload(schedule));
   } catch (err) { next(err); }
 });
@@ -178,6 +181,7 @@ schedulesRouter.post('/:uuid/activate', async (req: Request, res: Response, next
       where: { id: existing.id }, data: { active: true }, include: { runs: true },
     });
     mqttClient.publish(req.params.mac, 'schedule/activate', { uuid: req.params.uuid });
+    logEvent(device.id, 'schedule', 'schedule_activate', { uuid: req.params.uuid, name: existing.name });
     res.json(toPayload(schedule));
   } catch (err) { next(err); }
 });
@@ -188,6 +192,7 @@ schedulesRouter.post('/deactivate', async (req: Request, res: Response, next: Ne
     const device = await assertDeviceAccess(req.params.mac, req.user!.id);
     await db.schedule.updateMany({ where: { deviceId: device.id }, data: { active: false } });
     mqttClient.publish(req.params.mac, 'schedule/deactivate', {});
+    logEvent(device.id, 'schedule', 'schedule_deactivate', {});
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -201,6 +206,7 @@ schedulesRouter.delete('/:uuid', async (req: Request, res: Response, next: NextF
 
     await db.schedule.delete({ where: { id: existing.id } });
     mqttClient.publish(req.params.mac, 'schedule/delete', { uuid: req.params.uuid });
+    logEvent(device.id, 'schedule', 'schedule_delete', { uuid: req.params.uuid, name: existing.name });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
