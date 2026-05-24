@@ -6,12 +6,24 @@ import {
 import { useRouter } from 'expo-router';
 import { Device } from 'react-native-ble-plx';
 import { requestPermissions, scanForControllers, stopScan } from '@/services/ble';
+import { useAuthStore } from '@/store/auth';
+import { useControllerStore } from '@/store/controllers';
+
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 export default function ScanScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const { controllers, addController } = useControllerStore();
   const [scanning, setScanning]   = useState(false);
   const [devices, setDevices]     = useState<Device[]>([]);
   const [permDenied, setPermDenied] = useState(false);
+  const [importing, setImporting] = useState(false);
   const seen = useRef<Set<string>>(new Set());
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -28,9 +40,15 @@ export default function ScanScreen() {
     const granted = await requestPermissions();
     if (!granted) { setPermDenied(true); return; }
 
+    const adopted = new Set(controllers.flatMap(c => [c.deviceId, c.mac].filter(Boolean)));
+    console.log(`[Scan] filter: ${[...adopted].join(', ')} (${controllers.length} controllers)`);
     setScanning(true);
     scanForControllers((device) => {
       if (seen.current.has(device.id)) return;
+      if (adopted.has(device.id)) {
+        console.log(`[Scan] filtered out ${device.id} (already adopted)`);
+        return;
+      }
       seen.current.add(device.id);
       setDevices((prev) => [...prev, device]);
     }, 15_000);
@@ -42,6 +60,46 @@ export default function ScanScreen() {
     stopScan();
     setScanning(false);
     router.push({ pathname: '/(app)/adopt', params: { deviceId: device.id, deviceName: device.name ?? 'Azul Controller' } });
+  }
+
+  async function importFromCloud() {
+    const { accessToken } = useAuthStore.getState();
+    if (!accessToken) { Alert.alert('Not logged in'); return; }
+    setImporting(true);
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+      const res = await fetch(`${API_URL}/devices`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const serverDevices: any[] = await res.json();
+      const existing = new Set(controllers.map(c => c.mac));
+      let added = 0;
+      for (const d of serverDevices) {
+        if (existing.has(d.mac)) continue;
+        addController({
+          id: uuid(),
+          deviceId: d.mac,
+          mac: d.mac,
+          name: d.name ?? 'Azul Controller',
+          ownerSub: user?.sub ?? '',
+          claimedAt: Date.now(),
+          lastSeen: d.lastSeenAt ? new Date(d.lastSeenAt).getTime() : undefined,
+          cloudId: d.id,
+          connectionMode: 'cloud',
+        });
+        added++;
+      }
+      if (added > 0) {
+        router.replace('/(app)/home');
+      } else {
+        Alert.alert('No new controllers', 'All your cloud-registered controllers are already in the app.');
+      }
+    } catch (e: any) {
+      Alert.alert('Import failed', e?.message ?? 'Could not reach server');
+    } finally {
+      setImporting(false);
+    }
   }
 
   if (permDenied) {
@@ -80,16 +138,23 @@ export default function ScanScreen() {
       />
 
       {!scanning && (
-        <TouchableOpacity style={[styles.button, { marginTop: 16 }]} onPress={startScan}>
-          <Text style={styles.buttonText}>Scan Again</Text>
-        </TouchableOpacity>
+        <View style={{ gap: 12, marginTop: 16, alignItems: 'center' }}>
+          <TouchableOpacity style={styles.button} onPress={startScan}>
+            <Text style={styles.buttonText}>Scan Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, { backgroundColor: '#374151' }]} onPress={importFromCloud} disabled={importing}>
+            {importing
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.buttonText}>Import from Cloud</Text>}
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f8', padding: 24, paddingTop: 16 },
+  container: { flex: 1, backgroundColor: '#f0f4f8', padding: 16 },
   center:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   heading:   { fontSize: 18, fontWeight: '600', color: '#111827', marginBottom: 16 },
   emptyText: { color: '#6b7280', textAlign: 'center', marginTop: 32 },

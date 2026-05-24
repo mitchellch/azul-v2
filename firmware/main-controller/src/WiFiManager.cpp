@@ -45,8 +45,13 @@ void WiFiManager::reconnectIfNeeded() {
     _failCount++;
     if (_failCount >= 2) {
       _failCount = 0;
+      // Only attempt if credentials exist
+      char ssid[64] = {0};
+      char password[64] = {0};
+      loadCredentials(ssid, password);
+      if (strlen(ssid) == 0) return;
       Logger::log("[WiFi] Reconnecting...");
-      begin();
+      connect(ssid, password);
     }
   } else {
     _failCount = 0;

@@ -165,10 +165,11 @@ void BleServer::dispatch(const char* id, const char* cmd,
                          const JsonVariant& data, const char* authToken) {
   Logger::log("[BLE] cmd=%s", cmd);
 
-  // Auth gate — everything except get_device_info and claim requires owner match
+  // Auth gate — everything except get_device_info, claim, and scan_wifi requires owner match
   bool needsAuth = strcmp(cmd, "get_device_info") != 0 &&
                    strcmp(cmd, "claim")           != 0 &&
-                   strcmp(cmd, "unclaim")         != 0;
+                   strcmp(cmd, "unclaim")         != 0 &&
+                   strcmp(cmd, "scan_wifi")       != 0;
   if (needsAuth) {
     if (!_claimMgr.isClaimed()) {
       Logger::log("[BLE] rejected: not claimed");
@@ -201,6 +202,10 @@ void BleServer::dispatch(const char* id, const char* cmd,
   else if (strcmp(cmd, "deactivate_schedule")  == 0) handleDeactivateSchedule(id);
   else if (strcmp(cmd, "get_log")              == 0) handleGetLog(id, data);
   else if (strcmp(cmd, "set_wifi")             == 0) handleSetWifi(id, data);
+  else if (strcmp(cmd, "scan_wifi")            == 0) handleScanWifi(id);
+  else if (strcmp(cmd, "set_mqtt")             == 0) handleSetMqtt(id, data);
+  else if (strcmp(cmd, "get_config_version")   == 0) handleGetConfigVersion(id);
+  else if (strcmp(cmd, "push_config")          == 0) handlePushConfig(id, data);
   else {
     Logger::log("[BLE] Unknown cmd: %s", cmd);
     sendError(id, "unknown command");
@@ -498,6 +503,101 @@ void BleServer::handleSetWifi(const char* id, const JsonVariant& data) {
 
   Logger::log("[BLE] WiFi credentials saved for '%s' — reboot to connect", ssid);
   sendOk(id);
+}
+
+void BleServer::handleSetMqtt(const char* id, const JsonVariant& data) {
+  const char* host = data["host"] | "";
+  int port         = data["port"] | 1883;
+  if (!host[0]) { sendError(id, "host required"); return; }
+
+  Preferences prefs;
+  prefs.begin("mqtt", false);
+  prefs.putString("url", host);
+  prefs.putInt("port", port);
+  prefs.end();
+
+  Logger::log("[BLE] MQTT broker saved: %s:%d", host, port);
+  sendOk(id);
+}
+
+void BleServer::handleScanWifi(const char* id) {
+  Logger::log("[BLE] Scanning WiFi networks...");
+  int n = WiFi.scanNetworks(false, false, false, 300);
+  JsonDocument doc;
+  JsonArray arr = doc["networks"].to<JsonArray>();
+  for (int i = 0; i < n && i < 20; i++) {
+    JsonObject net = arr.add<JsonObject>();
+    net["ssid"] = WiFi.SSID(i);
+    net["rssi"] = WiFi.RSSI(i);
+    net["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+  }
+  WiFi.scanDelete();
+  String out; serializeJson(doc, out);
+  sendPayload(id, out);
+}
+
+void BleServer::handleGetConfigVersion(const char* id) {
+  Preferences prefs;
+  prefs.begin("config", true);
+  uint32_t version = prefs.getUInt("version", 0);
+  prefs.end();
+  JsonDocument doc;
+  doc["version"] = version;
+  String out; serializeJson(doc, out);
+  sendPayload(id, out);
+}
+
+void BleServer::handlePushConfig(const char* id, const JsonVariant& data) {
+  uint32_t version = data["version"] | 0;
+  if (version == 0) { sendError(id, "version required"); return; }
+
+  // Apply schedules
+  JsonArray schedules = data["schedules"].as<JsonArray>();
+  if (!schedules.isNull()) {
+    Schedule existing[SCHEDULE_RING_SIZE];
+    uint8_t existingCount = 0;
+    _scheduler.getAllSchedules(existing, existingCount);
+    for (uint8_t i = 0; i < existingCount; i++) {
+      _scheduler.deleteSchedule(existing[i].uuid);
+    }
+
+    const char* activeUuid = nullptr;
+    for (JsonObject s : schedules) {
+      Schedule sched;
+      char errMsg[64] = {0};
+      if (jsonToSchedule(s, sched, errMsg)) {
+        _scheduler.createSchedule(sched);
+        if (s["active"] | false) activeUuid = sched.uuid;
+      }
+    }
+    if (activeUuid) _scheduler.activateSchedule(activeUuid);
+    else _scheduler.deactivate();
+  }
+
+  // Apply zone names
+  JsonArray zones = data["zones"].as<JsonArray>();
+  if (!zones.isNull()) {
+    for (JsonObject z : zones) {
+      uint8_t num = z["number"] | 0;
+      const char* name = z["name"] | "";
+      if (num >= 1 && num <= MAX_ZONES && name[0]) {
+        _zones.setZoneName(num, name);
+      }
+    }
+  }
+
+  // Save version
+  Preferences prefs;
+  prefs.begin("config", false);
+  prefs.putUInt("version", version);
+  prefs.end();
+
+  if (onScheduleChanged) onScheduleChanged();
+  Logger::log("[BLE] Config pushed (version=%u)", version);
+  JsonDocument doc;
+  doc["version"] = version;
+  String out; serializeJson(doc, out);
+  sendPayload(id, out);
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,7 @@ private:
   void cmdStop(const char* args);
   void cmdStopAll();
   void cmdWifiSet(const char* args);
+  void cmdWifiScan();
   void cmdWifiStatus();
   void cmdMqttSet(const char* args);
   void cmdMqttStatus();

@@ -209,7 +209,7 @@ void CLI::poll() {
 uint8_t CLI::findMatches(const char** matches, uint8_t maxMatches) {
   static const char* cmds[] = {
     "help", "status", "zones", "start", "stop", "stop-all",
-    "wifi-set", "wifi-status", "mqtt-set", "mqtt-status", "version",
+    "wifi-set", "wifi-scan", "wifi-status", "mqtt-set", "mqtt-status", "version",
     "schedule", "schedules", "log",
     "tz-get", "tz-set", "nvs-dump", "reboot"
 #ifdef DEBUG_BUILD
@@ -270,6 +270,7 @@ void CLI::dispatch(const char* line) {
   else if (strcmp(cmd, "stop")        == 0) cmdStop(args);
   else if (strcmp(cmd, "stop-all")    == 0) cmdStopAll();
   else if (strcmp(cmd, "wifi-set")    == 0) cmdWifiSet(args);
+  else if (strcmp(cmd, "wifi-scan")   == 0) cmdWifiScan();
   else if (strcmp(cmd, "wifi-status") == 0) cmdWifiStatus();
   else if (strcmp(cmd, "mqtt-set")    == 0) cmdMqttSet(args);
   else if (strcmp(cmd, "mqtt-status") == 0) cmdMqttStatus();
@@ -295,6 +296,7 @@ void CLI::printHelp() {
   Serial.println("  stop <zone>               Stop a zone");
   Serial.println("  stop-all                  Stop all zones");
   Serial.println("  wifi-set <ssid> <pass>    Save WiFi credentials");
+  Serial.println("  wifi-scan                 Scan for nearby WiFi networks");
   Serial.println("  wifi-status               Show WiFi connection status");
   Serial.println("  mqtt-set <host> <port>    Save MQTT broker (e.g. mqtt-set 192.168.1.153 1883)");
   Serial.println("  mqtt-status               Show MQTT broker config");
@@ -501,6 +503,24 @@ void CLI::cmdWifiSet(const char* args) {
   prefs.end();
 
   Serial.printf("WiFi credentials saved for '%s'. Reboot to connect.\r\n", ssid);
+}
+
+void CLI::cmdWifiScan() {
+  Serial.println("Scanning...");
+  int n = WiFi.scanNetworks(false, false, false, 300);
+  if (n <= 0) {
+    Serial.println("No networks found.");
+    return;
+  }
+  Serial.printf("%-3s %-32s %6s  %s\r\n", "#", "SSID", "Signal", "Security");
+  Serial.println("-------------------------------------------------------------");
+  for (int i = 0; i < n; i++) {
+    int8_t rssi = (int8_t)WiFi.RSSI(i);
+    const char* sec = WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "Open" : "Secured";
+    int quality = constrain(2 * (rssi + 100), 0, 100);
+    Serial.printf("%-3d %-32s %4d%%  %s\r\n", i + 1, WiFi.SSID(i).c_str(), quality, sec);
+  }
+  WiFi.scanDelete();
 }
 
 static const char* rssiRating(int8_t rssi) {

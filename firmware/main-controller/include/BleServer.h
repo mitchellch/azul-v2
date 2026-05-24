@@ -86,6 +86,10 @@ private:
   void handleDeactivateSchedule(const char* id);
   void handleGetLog       (const char* id, const JsonVariant& data);
   void handleSetWifi      (const char* id, const JsonVariant& data);
+  void handleSetMqtt      (const char* id, const JsonVariant& data);
+  void handleScanWifi     (const char* id);
+  void handleGetConfigVersion(const char* id);
+  void handlePushConfig   (const char* id, const JsonVariant& data);
 
   void pushZoneData(); // immediately notify b3 after zone mutations
 
