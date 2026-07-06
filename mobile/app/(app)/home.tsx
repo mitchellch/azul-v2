@@ -9,6 +9,8 @@ import { logout } from '@/services/auth';
 import { useAuthStore } from '@/store/auth';
 import { useControllerStore, useCloudGradeStore, Controller } from '@/store/controllers';
 import { connect, disconnect, sendCommand } from '@/services/ble';
+import { updateDeviceName } from '@/services/cloudApi';
+import { pendingQueue } from '@/lib/pendingQueue';
 
 const OFFLINE_THRESHOLD_MS = 25 * 60 * 60 * 1000; // 25h — longer than one polling cycle
 
@@ -111,6 +113,15 @@ export default function HomeScreen() {
     const trimmed = renameInput.trim();
     if (!trimmed || !renameTarget) return;
     updateController(renameTarget.deviceId, { name: trimmed });
+    if (renameTarget.mac) {
+      updateDeviceName(renameTarget.mac, trimmed).catch(() => {
+        pendingQueue.enqueue({
+          path: `/devices/${renameTarget.mac}`,
+          method: 'PATCH',
+          body: { name: trimmed },
+        });
+      });
+    }
     setRenameTarget(null);
   }
 
@@ -257,7 +268,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: '#f0f4f8', padding: 20 },
+  container:   { flex: 1, backgroundColor: '#f0f4f8', padding: 16 },
   userRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 14 },
   avatar:      { width: 48, height: 48, borderRadius: 24 },
   greeting:    { fontSize: 17, fontWeight: '600', color: '#111827' },

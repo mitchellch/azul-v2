@@ -7,6 +7,7 @@ import { HttpError } from '../middleware/errorHandler';
 import { getConnectionStatus } from '../lib/connectionMonitor';
 import { zoneStateCache } from '../lib/zoneStateCache';
 import { logEvent } from '../lib/eventLog';
+import { bumpAndPushConfig, buildConfigBlob } from '../lib/configSync';
 import { z } from 'zod';
 
 export const devicesRouter = Router();
@@ -157,6 +158,7 @@ devicesRouter.patch('/:mac', async (req: Request, res: Response, next: NextFunct
     if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'name required');
     const device = await db.device.update({ where: { mac: req.params.mac }, data: { name: name.trim() } });
     logEvent(device.id, 'config', 'device_rename', { name: name.trim() });
+    bumpAndPushConfig(req.params.mac, device.id).catch(e => console.error('[configSync]', e.message));
     res.json(device);
   } catch (err) { next(err); }
 });
@@ -194,6 +196,15 @@ devicesRouter.post('/:mac/zones/:zoneNumber/stop', async (req: Request, res: Res
     sseRegistry.emit(req.params.mac, { type: 'status', zones: zoneStateCache.get(req.params.mac).map(z => ({ id: z.id, status: z.status, runtime_seconds: z.runtime, source: z.source })) });
     mqttClient.publish(req.params.mac, 'zone/stop', { zone: zoneNumber });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/devices/:mac/config — full config blob for phone caching / BLE relay
+devicesRouter.get('/:mac/config', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
+    const config = await buildConfigBlob(device.id);
+    res.json(config);
   } catch (err) { next(err); }
 });
 

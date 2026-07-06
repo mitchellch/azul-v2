@@ -1,6 +1,6 @@
 module.exports = {
   expo: {
-    name: 'azul',
+    name: 'Azul',
     slug: 'azul',
     version: '1.0.0',
     orientation: 'portrait',
@@ -14,11 +14,12 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
+      bundleIdentifier: 'com.anonymous.azul',
     },
     android: {
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#ffffff',
+        backgroundColor: '#1a56db',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,

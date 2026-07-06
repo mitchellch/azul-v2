@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "archive:events": "tsx scripts/archive-events.ts",
+    "qa:audit": "tsx scripts/qa-schedule-audit.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, TextInput,
+  View, Text, TouchableOpacity, TextInput,
   ActivityIndicator, StyleSheet, Alert, ScrollView, Switch,
-  Modal, FlatList as FList,
+  Modal, FlatList,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Slider from '@react-native-community/slider';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useControllerConnection } from '@/context/ControllerConnection';
-import { sliderToSeconds, secondsToSlider, formatDurationLabel, SLIDER_MAX_POS } from '@/utils/durationSlider';
+import { sliderToSeconds, secondsToSlider, formatDurationLabel, SLIDER_MAX_POS, SLIDER_LABELS } from '@/utils/durationSlider';
+import { WeekGlance } from '@/components/WeekGlance';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,11 +49,13 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function SchedulesScreen() {
-  const { execCommand, connected, status } = useControllerConnection();
+  const { execCommand, connected, status, zones } = useControllerConnection();
   const [loading, setLoading]       = useState(true);
   const [schedules, setSchedules]   = useState<Schedule[]>([]);
   const [activeUuid, setActiveUuid] = useState<string | null>(null);
   const [editing, setEditing]       = useState<Schedule | null>(null);
+  const [waagOpen, setWaagOpen]     = useState(false);
+  const [waagExpanded, setWaagExpanded] = useState(false);
   const swipeRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
   useEffect(() => { if (connected) loadWithRetry(); }, [connected]);
@@ -147,56 +150,74 @@ export default function SchedulesScreen() {
       )}
 
       {loading ? null : schedules.length > 0 && (
-        <FlatList
-          data={schedules}
-          keyExtractor={s => s.uuid!}
-          contentContainerStyle={{ paddingBottom: 32 }}
-          renderItem={({ item: s }) => {
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+          {schedules.map(s => {
             const isActive = s.uuid === activeUuid;
 
-            const renderRightActions = () => (
-              <TouchableOpacity
-                style={styles.swipeDeleteBtn}
-                onPress={() => {
-                  swipeRefs.current.get(s.uuid!)?.close();
-                  handleDelete(s.uuid!);
-                }}
-              >
-                <Text style={styles.swipeDeleteText}>🗑{'\n'}Delete</Text>
-              </TouchableOpacity>
-            );
-
             return (
-              <Swipeable
-                ref={ref => { swipeRefs.current.set(s.uuid!, ref); }}
-                renderRightActions={renderRightActions}
-                rightThreshold={60}
-                overshootRight={false}
-              >
-                <TouchableOpacity
-                  style={styles.card}
-                  onPress={() => setEditing(s)}
-                  activeOpacity={0.85}
+              <View key={s.uuid}>
+                <Swipeable
+                  ref={ref => { swipeRefs.current.set(s.uuid!, ref); }}
+                  renderRightActions={() => (
+                    <TouchableOpacity
+                      style={styles.swipeDeleteBtn}
+                      onPress={() => {
+                        swipeRefs.current.get(s.uuid!)?.close();
+                        handleDelete(s.uuid!);
+                      }}
+                    >
+                      <Text style={styles.swipeDeleteText}>🗑{'\n'}Delete</Text>
+                    </TouchableOpacity>
+                  )}
+                  rightThreshold={60}
+                  overshootRight={false}
                 >
-                  <View style={styles.cardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.scheduleName}>{s.name}</Text>
-                      <Text style={styles.scheduleDates}>
-                        {formatDate(s.start_date)} → {s.end_date ? formatDate(s.end_date) : 'open-ended'}
-                      </Text>
-                      <Text style={styles.scheduleRuns}>{s.runs.length} zone{s.runs.length !== 1 ? 's' : ''} scheduled</Text>
-                    </View>
-                    <Switch
-                      value={isActive}
-                      onValueChange={() => handleActivate(s.uuid!)}
-                      trackColor={{ true: '#1a56db' }}
-                    />
+                  <View style={styles.card}>
+                    <TouchableOpacity
+                      onPress={() => setEditing(s)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.cardHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.scheduleName}>{s.name}</Text>
+                          <Text style={styles.scheduleDates}>
+                            {formatDate(s.start_date)} → {s.end_date ? formatDate(s.end_date) : 'open-ended'}
+                          </Text>
+                          <Text style={styles.scheduleRuns}>{s.runs.length} zone{s.runs.length !== 1 ? 's' : ''} scheduled</Text>
+                        </View>
+                        <Switch
+                          value={isActive}
+                          onValueChange={() => handleActivate(s.uuid!)}
+                          trackColor={{ true: '#1a56db' }}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    {isActive && (
+                      <View style={styles.waagToggle}>
+                        <TouchableOpacity
+                          onPress={() => setWaagOpen(!waagOpen)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.waagToggleText}>{waagOpen ? '▾' : '▸'} Week at a Glance</Text>
+                        </TouchableOpacity>
+                        {waagOpen && (
+                          <TouchableOpacity onPress={() => setWaagExpanded(!waagExpanded)} activeOpacity={0.7}>
+                            <Text style={styles.waagZoomText}>{waagExpanded ? 'Zoom out' : 'Zoom in'}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                    {isActive && waagOpen && (
+                      <View style={{ marginTop: 8 }}>
+                        <WeekGlance runs={s.runs} zones={zones} expanded={waagExpanded} />
+                      </View>
+                    )}
                   </View>
-                </TouchableOpacity>
-              </Swipeable>
+                </Swipeable>
+              </View>
             );
-          }}
-        />
+          })}
+        </ScrollView>
       )}
 
       {(status as any)?.firmware && (
@@ -225,7 +246,7 @@ function DrumWheel({ values, selected, onChange }: {
   selected: number;
   onChange: (idx: number) => void;
 }) {
-  const listRef = useRef<FList<string>>(null);
+  const listRef = useRef<FlatList<string>>(null);
 
   useEffect(() => {
     listRef.current?.scrollToIndex({ index: selected, animated: false });
@@ -234,7 +255,7 @@ function DrumWheel({ values, selected, onChange }: {
   return (
     <View style={{ height: DRUM_ITEM_H * DRUM_VISIBLE, width: 72, overflow: 'hidden' }}>
       <View style={drumStyles.highlightBar} pointerEvents="none" />
-      <FList
+      <FlatList
         ref={listRef}
         data={values}
         keyExtractor={v => v}
@@ -319,6 +340,65 @@ const tpStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
+// Duration picker (arbitrary duration via long-press)
+// ---------------------------------------------------------------------------
+
+function DurationPickerModal({ seconds, onConfirm, onCancel }: {
+  seconds: number;
+  onConfirm: (secs: number) => void;
+  onCancel: () => void;
+}) {
+  const initH = Math.floor(seconds / 3600);
+  const initM = Math.floor((seconds % 3600) / 60);
+  const initS = seconds % 60;
+  const [h, setH] = useState(initH);
+  const [m, setM] = useState(initM);
+  const [sec, setSec] = useState(initS);
+  const hours   = Array.from({ length: 5 }, (_, i) => i.toString().padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+  const secs    = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+
+  return (
+    <Modal transparent animationType="fade">
+      <View style={tpStyles.overlay}>
+        <View style={tpStyles.box}>
+          <Text style={tpStyles.title}>Set Duration</Text>
+          <View style={tpStyles.drums}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={dpLabelStyle}>hr</Text>
+              <DrumWheel values={hours} selected={h} onChange={setH} />
+            </View>
+            <Text style={tpStyles.colon}>:</Text>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={dpLabelStyle}>min</Text>
+              <DrumWheel values={minutes} selected={m} onChange={setM} />
+            </View>
+            <Text style={tpStyles.colon}>:</Text>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={dpLabelStyle}>sec</Text>
+              <DrumWheel values={secs} selected={sec} onChange={setSec} />
+            </View>
+          </View>
+          <View style={tpStyles.buttons}>
+            <TouchableOpacity style={tpStyles.cancelBtn} onPress={onCancel}>
+              <Text style={tpStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={tpStyles.confirmBtn} onPress={() => {
+              const total = h * 3600 + m * 60 + sec;
+              onConfirm(Math.max(1, total));
+            }}>
+              <Text style={tpStyles.confirmText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const dpLabelStyle = { fontSize: 11, color: '#6b7280', marginBottom: 4 } as const;
+
+// ---------------------------------------------------------------------------
 // Schedule editor
 // ---------------------------------------------------------------------------
 
@@ -392,9 +472,9 @@ function ScheduleEditor({ schedule, onSaved, onCancel }: {
         <TouchableOpacity
           onPress={handleSave}
           disabled={saving || !isDirty}
-          style={{ width: 44, alignItems: 'center', opacity: (!isDirty && !saving) ? 0.4 : 1 }}
+          style={{ paddingHorizontal: 12, alignItems: 'center', opacity: (!isDirty && !saving) ? 0.4 : 1 }}
         >
-          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Save</Text>}
+          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }} numberOfLines={1}>Save</Text>}
         </TouchableOpacity>
       </View>
 
@@ -510,6 +590,7 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
 }) {
   const [durSecs, setDurSecs]       = useState(run.duration_seconds);
   const [zonePickerOpen, setZonePickerOpen] = useState(false);
+  const [durationPickerOpen, setDurationPickerOpen] = useState(false);
   const intervalDays = run.interval_days ?? 1;
   const useInterval  = intervalDays > 1;
 
@@ -590,23 +671,41 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
         </TouchableOpacity>
       </Modal>
 
-      {/* Duration slider */}
+      {/* Duration slider — long-press for arbitrary duration */}
       <Text style={styles.runFieldLabel}>Duration</Text>
-      <Text style={styles.durationLabel}>{formatDurationLabel(durSecs)}</Text>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={() => setDurationPickerOpen(true)}
+        delayLongPress={500}
+      >
+        <Text style={styles.durationLabel}>{formatDurationLabel(durSecs)}</Text>
+      </TouchableOpacity>
       <Slider
         style={{ width: '100%', height: 36 }}
         minimumValue={0}
         maximumValue={SLIDER_MAX_POS}
         step={1}
         value={secondsToSlider(durSecs)}
-        onValueChange={mins => setDurSecs(sliderToSeconds(mins))}
-        onSlidingComplete={mins => onUpdate({ duration_seconds: sliderToSeconds(mins) })}
+        onValueChange={pos => setDurSecs(sliderToSeconds(pos))}
+        onSlidingComplete={pos => onUpdate({ duration_seconds: sliderToSeconds(pos) })}
         minimumTrackTintColor="#1a56db" maximumTrackTintColor="#d1d5db" thumbTintColor="#1a56db"
       />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 }}>
-        <Text style={styles.sliderEndLabel}>1s</Text>
-        <Text style={styles.sliderEndLabel}>60m</Text>
+        <Text style={styles.sliderEndLabel}>{SLIDER_LABELS[0].label}</Text>
+        <Text style={styles.sliderEndLabel}>{SLIDER_LABELS[SLIDER_LABELS.length - 1].label}</Text>
       </View>
+      {/* Arbitrary duration picker (long-press) */}
+      {durationPickerOpen && (
+        <DurationPickerModal
+          seconds={durSecs}
+          onConfirm={secs => {
+            setDurSecs(secs);
+            onUpdate({ duration_seconds: secs });
+            setDurationPickerOpen(false);
+          }}
+          onCancel={() => setDurationPickerOpen(false)}
+        />
+      )}
 
       {/* Schedule mode toggle */}
       <Text style={[styles.runFieldLabel, { marginTop: 14 }]}>Schedule</Text>
@@ -736,6 +835,9 @@ const styles = StyleSheet.create({
   intervalValue:    { fontSize: 20, fontWeight: '700', color: '#1a56db', minWidth: 28, textAlign: 'center' },
   addRunBtn:        { marginTop: 8, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#1a56db', alignItems: 'center' },
   addRunText:       { color: '#1a56db', fontWeight: '600', fontSize: 14 },
+  waagToggle:       { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  waagToggleText:   { fontSize: 12, color: '#6b7280', fontWeight: '600' },
+  waagZoomText:     { fontSize: 12, color: '#1a56db', fontWeight: '600' },
   firmwareRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, marginTop: 'auto' as any },
   firmwareLabel:    { fontSize: 11, color: '#c4c9d4' },
   debugBadge:       { backgroundColor: '#dc2626', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },

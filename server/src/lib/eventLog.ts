@@ -6,7 +6,7 @@ export type EventAction =
   | 'zone_start' | 'zone_stop'
   | 'schedule_create' | 'schedule_update' | 'schedule_delete'
   | 'schedule_activate' | 'schedule_deactivate'
-  | 'zone_rename' | 'device_rename' | 'zone_photo_set' | 'zone_photo_remove'
+  | 'zone_rename' | 'zone_color' | 'device_rename' | 'zone_photo_set' | 'zone_photo_remove'
   | 'error';
 
 export async function logEvent(

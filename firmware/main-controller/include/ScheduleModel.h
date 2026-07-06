@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #endif
 
-#define MAX_RUNS_PER_SCHEDULE  24
+#define MAX_RUNS_PER_SCHEDULE  48
 #define SCHEDULE_RING_SIZE      5
 #define AUDIT_RING_SIZE       256
 #define CHANGELOG_RING_SIZE    32

@@ -92,6 +92,7 @@ function startSSE(e: Entry) {
 
   const es = new EventSource(`${API_URL}/devices/${e.mac}/stream`, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    lineEndingCharacter: '\n',
   });
 
   es.addEventListener('message', (ev: any) => {
@@ -120,10 +121,19 @@ function startSSE(e: Entry) {
 
 async function load(e: Entry) {
   if (e.stopped) return;
+  console.log(`[cloudManager] load(${e.mac}) — fetching device status`);
   setState(e, { connecting: true, connected: false });
   try {
-    const d = await getDeviceStatus(e.mac) as any;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 10_000);
+    let d: any;
+    try {
+      d = await getDeviceStatus(e.mac, abort.signal);
+    } finally {
+      clearTimeout(timer);
+    }
     if (e.stopped) return;
+    console.log(`[cloudManager] load(${e.mac}) — success, ${Array.isArray(d.zones) ? d.zones.length : 0} zones`);
 
     const status: StatusData = {
       firmware:      d.firmware       ?? undefined,
@@ -150,7 +160,8 @@ async function load(e: Entry) {
 
     if (e.pollTimer) clearInterval(e.pollTimer);
     e.pollTimer = setInterval(() => pollStatus(e), POLL_INTERVAL_MS);
-  } catch {
+  } catch (err: any) {
+    console.warn(`[cloudManager] load(${e.mac}) — failed: ${err?.message ?? err}`);
     if (!e.stopped) setState(e, { connecting: false, connected: false });
   }
 }
@@ -201,11 +212,19 @@ export const cloudManager = {
   },
 
   reload(mac: string): void {
-    const e = entries.get(mac);
-    if (!e) return;
-    e.es?.close(); e.es = null;
-    if (e.pollTimer)     clearInterval(e.pollTimer);
-    if (e.sseRetryTimer) clearTimeout(e.sseRetryTimer);
+    let e = entries.get(mac);
+    if (!e) {
+      e = {
+        mac, state: { connecting: true, connected: false },
+        es: null, pollTimer: null, sseRetryTimer: null, stopped: false,
+        stateSubscribers: new Set(), statusSubscribers: new Set(),
+      };
+      entries.set(mac, e);
+    } else {
+      e.es?.close(); e.es = null;
+      if (e.pollTimer)     clearInterval(e.pollTimer);
+      if (e.sseRetryTimer) clearTimeout(e.sseRetryTimer);
+    }
     load(e);
   },
 

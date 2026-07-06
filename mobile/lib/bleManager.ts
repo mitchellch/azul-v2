@@ -11,6 +11,7 @@ import {
   subscribeToZoneData,
 } from '@/services/ble';
 import { controllerStore } from '@/lib/controllerStore';
+// import { relayConfigIfNeeded } from '@/lib/configRelay';
 import type { ZoneData, StatusData } from '@/context/ControllerConnection';
 
 function normalizeSource(s: string | undefined): ZoneData['source'] {
@@ -126,6 +127,9 @@ async function doConnect(e: ControllerEntry) {
     })));
     controllerStore.syncQueue(e.mac);
     e.initialFetchDone = true;
+
+    // Config relay disabled — needs config version initialization on firmware first
+    // relayConfigIfNeeded(device, e.mac, e.ownerSub).catch(() => {});
 
     device.onDisconnected(() => {
       if (e.stopped) return;

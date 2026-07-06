@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Ctx } from '@/context/ControllerConnection';
 import {
   startZone, stopZone, stopAllZones,
@@ -15,14 +15,32 @@ import type { ZoneData, StatusData } from '@/context/ControllerConnection';
 type Props = { mac: string; ownerSub: string; children: ReactNode };
 
 export function CloudControllerConnectionProvider({ mac, ownerSub, children }: Props) {
-  // Start the persistent cloud connection (idempotent — no-op if already running)
+  // Ensure cloud connection is active — reload if not yet connected
   useEffect(() => {
-    cloudManager.start(mac);
+    const state = cloudManager.getState(mac);
+    console.log(`[CloudProvider] mount mac=${mac} state=${JSON.stringify(state)}`);
+    if (!state.connected && !state.connecting) {
+      console.log(`[CloudProvider] calling reload(${mac})`);
+      cloudManager.reload(mac);
+    } else if (!state.connected) {
+      console.log(`[CloudProvider] already connecting, waiting...`);
+    } else {
+      cloudManager.start(mac);
+    }
   }, [mac]);
 
-  // Subscribe to connection state
+  // Subscribe to connection state with auto-retry on failure
   const [cloudState, setCloudState] = useState(() => cloudManager.getState(mac));
   useEffect(() => cloudManager.subscribeState(mac, setCloudState), [mac]);
+  const retried = useRef(false);
+  useEffect(() => {
+    if (!cloudState.connected && !cloudState.connecting && !retried.current) {
+      retried.current = true;
+      const t = setTimeout(() => cloudManager.reload(mac), 2_000);
+      return () => clearTimeout(t);
+    }
+    if (cloudState.connected) retried.current = false;
+  }, [cloudState.connected, cloudState.connecting, mac]);
 
   // Subscribe to status notifications
   const [status, setStatus] = useState<StatusData>({});

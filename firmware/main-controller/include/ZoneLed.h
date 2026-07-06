@@ -14,7 +14,7 @@
 // Nothing else in the codebase references ZoneLed.
 
 #define ZONE_LED_PIN  48
-#define ZONE_LED_HALF 64   // half intensity (0-255)
+#define ZONE_LED_HALF 32   // reduced intensity (0-255)
 #define ZONE_LED_FLASH_MS 500
 
 class ZoneLed {

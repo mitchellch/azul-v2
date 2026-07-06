@@ -23,8 +23,8 @@ try { ImagePicker = require('expo-image-picker'); } catch {}
 
 // Zone color for the inactive border (index 0 = unused)
 const ZONE_COLORS: Record<number, string> = {
-  1: '#e5e7eb', 2: '#ff0000', 3: '#ff8000', 4: '#cccc00',
-  5: '#00cc00', 6: '#0055ff', 7: '#4b0082', 8: '#9400d3',
+  1: '#6b7280', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
+  5: '#22c55e', 6: '#3b82f6', 7: '#6366f1', 8: '#a855f7',
 };
 
 function SprinklerIcon() {

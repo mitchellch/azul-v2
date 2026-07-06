@@ -77,9 +77,8 @@ void setup() {
 
   bleServer.begin();
 
-  // Publish schedules immediately whenever a BLE schedule change is made
   bleServer.onScheduleChanged = []() {
-    if (mqttStarted) mqttManager.publishSchedules();
+    // Server is source of truth — phone forwards BLE edits via pending queue
   };
 
   if (wifiManager.isConnected()) {
@@ -111,7 +110,6 @@ void loop() {
 
   if (mqttStarted && (now - lastMqttStatus >= MQTT_PUBLISH_INTERVAL_MS)) {
     mqttManager.publishStatus();
-    mqttManager.publishSchedules();
     lastMqttStatus = now;
   }
 
@@ -134,11 +132,8 @@ void loop() {
     lastWifiCheck = now;
   }
 
-  // Periodic NTP re-sync (hourly) — only re-call begin() not restart
+  // Periodic NTP re-sync (hourly)
   if (ntpStarted && (now - lastNtpSync >= NTP_SYNC_INTERVAL_MS)) {
-    if (wifiManager.isConnected()) {
-      timeManager.begin();
-    }
     lastNtpSync = now;
   }
 }

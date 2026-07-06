@@ -1,5 +1,6 @@
 import mqtt from 'mqtt';
-import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules, handleDeviceConnection, setPublishFn } from './handlers';
+import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules, handleDeviceConnection, setPublishFn, mqttStats } from './handlers';
+import { handleConfigRequest, handleConfigAck } from '../lib/configSync';
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 
@@ -16,7 +17,9 @@ class MqttClient {
       this.client!.subscribe('azul/+/events');
       this.client!.subscribe('azul/+/schedules');
       this.client!.subscribe('azul/+/connection');
-      console.log('[MQTT] Subscribed to azul/+/status, azul/+/events, azul/+/schedules');
+      this.client!.subscribe('azul/+/config/request');
+      this.client!.subscribe('azul/+/config/ack');
+      console.log('[MQTT] Subscribed to azul/+/status, azul/+/events, azul/+/schedules, azul/+/config/*');
     });
 
     this.client.on('message', (topic, payload) => {
@@ -26,13 +29,20 @@ class MqttClient {
       const msgType = parts[2];
 
       try {
-        const data = JSON.parse(payload.toString());
+        const raw = payload.toString();
+        const data = JSON.parse(raw);
         if      (msgType === 'status')     handleDeviceStatus(mac, data);
         else if (msgType === 'events')     handleDeviceEvent(mac, data);
         else if (msgType === 'schedules')  handleDeviceSchedules(mac, data);
         else if (msgType === 'connection') handleDeviceConnection(mac, data);
-      } catch {
-        console.error(`[MQTT] Failed to parse message on ${topic}`);
+        else if (msgType === 'config') {
+          const subType = parts[3];
+          if      (subType === 'request') { mqttStats.configRequests++; handleConfigRequest(mac, data); }
+          else if (subType === 'ack')     { mqttStats.configAcks++; handleConfigAck(mac, data); }
+        }
+      } catch (err: any) {
+        const snippet = payload.toString().slice(0, 200);
+        console.error(`[MQTT] Failed to parse on ${topic}: ${err.message} — "${snippet}"`);
       }
     });
 
@@ -53,7 +63,7 @@ class MqttClient {
     }
     const topic = `azul/${mac}/cmd/${command}`;
     this.client.publish(topic, JSON.stringify(payload));
-    console.log(`[MQTT] Published to ${topic}`);
+    if (command.startsWith('config/')) mqttStats.configPushes++;
   }
 }
 

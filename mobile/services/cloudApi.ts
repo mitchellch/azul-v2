@@ -2,12 +2,13 @@ import { useAuthStore } from '@/store/auth';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
-async function authFetch(path: string, options: RequestInit = {}) {
+async function authFetch(path: string, options: RequestInit = {}, signal?: AbortSignal) {
   const { accessToken, clearSession } = useAuthStore.getState();
   if (!accessToken) throw new Error('Not authenticated');
 
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    signal: signal ?? options.signal,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
@@ -47,6 +48,17 @@ export async function updateZoneName(mac: string, zoneNumber: number, name: stri
     method: 'PUT',
     body: JSON.stringify({ name }),
   });
+}
+
+export async function updateZoneColor(mac: string, zoneNumber: number, color: string | null): Promise<void> {
+  await authFetch(`/devices/${mac}/zones/${zoneNumber}`, {
+    method: 'PUT',
+    body: JSON.stringify({ color }),
+  });
+}
+
+export async function getDeviceConfig(mac: string): Promise<unknown> {
+  return authFetch(`/devices/${mac}/config`);
 }
 
 export async function uploadZonePhoto(mac: string, zoneNumber: number, uri: string): Promise<{ photoUrl: string }> {
@@ -96,8 +108,8 @@ export async function getDeviceZones(mac: string): Promise<unknown[]> {
   return authFetch(`/devices/${mac}/zones`);
 }
 
-export async function getDeviceStatus(mac: string): Promise<unknown> {
-  return authFetch(`/devices/${mac}`);
+export async function getDeviceStatus(mac: string, signal?: AbortSignal): Promise<unknown> {
+  return authFetch(`/devices/${mac}`, {}, signal);
 }
 
 export async function startZone(mac: string, zoneNumber: number, duration: number): Promise<void> {

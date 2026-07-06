@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFiClient.h>
+#include <ArduinoJson.h>
 #include "ZoneController.h"
 #include "ZoneQueue.h"
 #include "Scheduler.h"
@@ -19,8 +20,10 @@ public:
     void publishStatus();
     void publishSchedules();
     void publishZoneTransition(uint8_t zoneId, const char* type, uint16_t durationSeconds, uint8_t source);
+    void requestConfig();
 
     bool isConnected();
+    uint32_t getConfigVersion() const { return _configVersion; }
 
 private:
     ZoneController& _zones;
@@ -38,6 +41,9 @@ private:
     char _topicSchedules[52]; // "azul/{mac}/schedules"
     char _topicCmdSub[52];    // "azul/{mac}/cmd/#"
     char _topicCmdPrefix[44]; // "azul/{mac}/cmd/"
+    char _topicConfigPush[52]; // "azul/{mac}/config/push"
+    char _topicConfigReq[56];  // "azul/{mac}/config/request"
+    char _topicConfigAck[52];  // "azul/{mac}/config/ack"
     char _clientId[24];      // "azul-{last6}"
 
     char _brokerUrl[64];
@@ -45,9 +51,13 @@ private:
 
     unsigned long _lastConnectAttempt;
     uint8_t       _failCount;
+    uint32_t      _configVersion;
 
     void loadBrokerConfig();
+    void loadConfigVersion();
+    void saveConfigVersion(uint32_t version);
     void reconnect();
+    void handleConfigPush(const JsonVariant& data);
 
     static void messageCallback(char* topic, uint8_t* payload, unsigned int length);
     void handleMessage(const char* topic, const char* payload);

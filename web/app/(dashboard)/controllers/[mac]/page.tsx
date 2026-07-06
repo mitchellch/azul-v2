@@ -2,13 +2,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
+import { ProgramEditor, Program, expandPrograms, DAY_NAMES, DAY_BITS, formatTime } from '@/components/ProgramEditor';
+import { WeekGlance } from '@/components/WeekGlance';
+import { ColorPicker } from '@/components/ColorPicker';
 import { zoneStream, useZones, ZoneLive } from '@/lib/zoneStream';
 
 type LogEntry    = { id: string; zoneNumber: number; startedAt: string; durationSeconds: number; source: string };
 type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?: boolean; mac?: string; ip?: string };
 
 const ZONE_COLORS: Record<number, string> = {
-  1: '#9ca3af', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
+  1: '#6b7280', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
   5: '#22c55e', 6: '#3b82f6', 7: '#6366f1', 8: '#a855f7',
 };
 
@@ -75,7 +78,7 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-const TABS = ['Schedules', 'Zones', 'Settings'] as const;
+const TABS = ['Programs', 'Schedules', 'Zones', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 export default function ControllerPage() {
@@ -87,6 +90,9 @@ export default function ControllerPage() {
   const zones = useZones(mac as string);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);
+  const [programs, setPrograms]   = useState<Program[]>([]);
+  const [editingProgram, setEditingProgram] = useState<Program | null | 'new'>(null);
+  const [waagOpen, setWaagOpen]   = useState(false);
   const [logs, setLogs]           = useState<LogEntry[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [loading, setLoading]     = useState(true);
@@ -104,6 +110,9 @@ export default function ControllerPage() {
   const fileInputRefs  = useRef<Record<number, HTMLInputElement | null>>({});
   const [editingZone, setEditingZone]   = useState<number | null>(null);
   const [editingName, setEditingName]   = useState('');
+  const [editingColor, setEditingColor] = useState<string | null>(null);
+  const [zoneColors, setZoneColors]     = useState<Record<number, string | null>>({});
+  const [confirmStop, setConfirmStop]   = useState<{ number: number; name: string; scheduleName: string } | null>(null);
 
   const apiFetch = useCallback(async (path: string, opts?: RequestInit) => {
     const res = await fetch(`/api/proxy${path}`, { cache: 'no-store', ...opts });
@@ -113,6 +122,27 @@ export default function ControllerPage() {
   }, []);
 
   useEffect(() => { zoneStream.open(); }, []);
+
+  // Load programs from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`azul-programs-${mac}`);
+      if (stored) setPrograms(JSON.parse(stored));
+    } catch {}
+  }, [mac]);
+
+  function savePrograms(updated: Program[]) {
+    setPrograms(updated);
+    localStorage.setItem(`azul-programs-${mac}`, JSON.stringify(updated));
+  }
+
+  async function syncProgramsToSchedule(progs: Program[]) {
+    const runs = expandPrograms(progs);
+    const activeSchedule = schedules.find(s => s.active);
+    if (!activeSchedule) return;
+    const updated = { ...activeSchedule, runs };
+    await saveSchedule(updated);
+  }
 
   // Load device metadata and schedules (not zone state — that comes from zoneStream)
   useEffect(() => {
@@ -133,6 +163,9 @@ export default function ControllerPage() {
       }
       setZoneEdits(Object.fromEntries(
         (device.zones ?? []).map((z: any) => [z.number, z.name ?? ''])
+      ));
+      setZoneColors(Object.fromEntries(
+        (device.zones ?? []).map((z: any) => [z.number, z.color ?? null])
       ));
       setSchedules(s);
       setDeviceName(device.name ?? '');
@@ -171,8 +204,16 @@ export default function ControllerPage() {
   function stopZone(number: number) {
     const zone = zones.find(z => z.number === number);
     if (zone?.source === 'scheduler') {
-      if (!confirm(`${zone.name || `Zone ${number}`} is running on a schedule. Stop it?`)) return;
+      const activeSchedule = schedules.find(s => s.active);
+      const prog = programs.find(pr => pr.zones.some(z => z.zoneId === number));
+      const scheduleName = prog?.name ?? activeSchedule?.name ?? 'a schedule';
+      setConfirmStop({ number, name: zone.name || `Zone ${number}`, scheduleName });
+      return;
     }
+    doStopZone(number);
+  }
+
+  function doStopZone(number: number) {
     zoneStream.patch(mac as string, number, 'idle', 0);
     fetch(`/api/proxy/devices/${mac}/zones/${number}/stop`, { method: 'POST' });
   }
@@ -321,6 +362,101 @@ export default function ControllerPage() {
         )}
       </div>
 
+      {/* ── Programs tab ── */}
+      {tab === 'Programs' && (
+        <div>
+          {editingProgram !== null ? (
+            <ProgramEditor
+              program={editingProgram === 'new' ? undefined : editingProgram}
+              zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
+              onSave={(p) => {
+                const existing = programs.findIndex(x => x.id === p.id);
+                const updated = existing >= 0
+                  ? programs.map((x, i) => i === existing ? p : x)
+                  : [...programs, p];
+                savePrograms(updated);
+                syncProgramsToSchedule(updated);
+                setEditingProgram(null);
+              }}
+              onCancel={() => setEditingProgram(null)}
+            />
+          ) : (
+            <>
+              {!schedules.some(s => s.active) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-4 text-sm text-amber-800">
+                  <p className="font-medium">No active schedule</p>
+                  <p className="mt-1">Programs need an active schedule to sync to. Create and activate a schedule in the Schedules tab first.</p>
+                </div>
+              )}
+
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={() => setEditingProgram('new')}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-[#1a56db] text-white hover:bg-blue-700 transition-colors"
+                >
+                  + New Program
+                </button>
+              </div>
+
+              {programs.length === 0 ? (
+                <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+                  <p className="text-gray-600 font-medium mb-1">No programs yet.</p>
+                  <p className="text-gray-400 text-sm mb-4">
+                    A program groups zones that run together at the same times and days.
+                  </p>
+                  <button onClick={() => setEditingProgram('new')}
+                    className="text-[#1a56db] text-sm font-semibold hover:underline">
+                    Create your first program →
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {programs.map(prog => {
+                    const dayLabels = DAY_NAMES.filter((_, i) => (prog.dayMask & DAY_BITS[i]) !== 0).join(', ');
+                    const timeLabels = prog.startTimes.map(t => formatTime(t.hour, t.minute)).join(', ');
+                    return (
+                      <div key={prog.id}
+                        onClick={() => setEditingProgram(prog)}
+                        className="bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0 mr-4">
+                            <p className="font-semibold text-gray-900">{prog.name}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              {prog.zones.length} zone{prog.zones.length !== 1 ? 's' : ''} · {timeLabels}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">{dayLabels}</p>
+                          </div>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (!confirm(`Delete program "${prog.name}"?`)) return;
+                              const updated = programs.filter(x => x.id !== prog.id);
+                              savePrograms(updated);
+                              syncProgramsToSchedule(updated);
+                            }}
+                            className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
+                          >🗑</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {programs.length > 0 && (
+                <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
+                  <p className="font-semibold">How Programs Work</p>
+                  <p>Each program runs its zones sequentially at the specified start times on the selected days.</p>
+                  <p>Programs are expanded into individual zone runs and synced to the active schedule on the controller.</p>
+                  <p><strong>{expandPrograms(programs).length}</strong> of <strong>48</strong> run slots used.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Zones tab ── */}
       {tab === 'Zones' && (
         <>
@@ -356,7 +492,7 @@ export default function ControllerPage() {
             {zones.map(z => {
               const isRunning = z.status === 'running';
               const isPending = z.status === 'pending';
-              const color = ZONE_COLORS[z.number] ?? '#9ca3af';
+              const color = zoneColors[z.number] ?? ZONE_COLORS[z.number] ?? '#9ca3af';
               const bg    = isRunning ? '#f0fdf4' : isPending ? '#fffbeb' : '#ffffff';
               const photoThumb = z.photoUrl ? `${BACKEND_URL}${z.photoUrl}` : null;
 
@@ -373,6 +509,7 @@ export default function ControllerPage() {
                       longPressFired.current = true;
                       setEditingZone(z.number);
                       setEditingName(z.name || `Zone ${z.number}`);
+                      setEditingColor(zoneColors[z.number] ?? ZONE_COLORS[z.number] ?? null);
                     }, 500);
                   }}
                   onMouseUp={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
@@ -426,6 +563,24 @@ export default function ControllerPage() {
             </div>
           )}
 
+          {confirmStop && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmStop(null)}>
+              <div className="bg-white rounded-xl shadow-xl w-80 p-5" onClick={e => e.stopPropagation()}>
+                <p className="text-sm font-medium text-gray-900 mb-1">Stop scheduled zone?</p>
+                <p className="text-sm text-gray-500 mb-4">
+                  <strong>{confirmStop.name}</strong> is running as part of the <strong>{confirmStop.scheduleName}</strong> schedule. Are you sure you want to stop it?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setConfirmStop(null)} className="text-sm text-gray-500 px-3 py-1.5 rounded-md hover:bg-gray-100">Cancel</button>
+                  <button
+                    onClick={() => { doStopZone(confirmStop.number); setConfirmStop(null); }}
+                    className="text-sm font-semibold text-white bg-red-500 px-3 py-1.5 rounded-md hover:bg-red-600"
+                  >Stop</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {editingZone !== null && (() => {
             const ez = zones.find(zz => zz.number === editingZone);
             const thumb = ez?.photoUrl ? `${BACKEND_URL}${ez.photoUrl}` : null;
@@ -462,13 +617,21 @@ export default function ControllerPage() {
                       <input type="file" accept="image/*" className="hidden" onChange={e => { uploadWebPhoto(editingZone!, e); setEditingZone(null); }} />
                     </label>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <ColorPicker selected={editingColor} onSelect={setEditingColor} />
+                  <div className="flex justify-end gap-2 mt-4">
                     <button onClick={() => setEditingZone(null)} className="text-sm text-gray-500 px-3 py-1.5 rounded-md hover:bg-gray-100">Cancel</button>
                     <button
                       onClick={() => {
                         const name = editingName.trim() || `Zone ${editingZone}`;
                         setZoneEdits(prev => ({ ...prev, [editingZone!]: name }));
+                        setZoneColors(prev => ({ ...prev, [editingZone!]: editingColor }));
                         saveZoneName(editingZone!);
+                        if (editingColor !== (zoneColors[editingZone!] ?? ZONE_COLORS[editingZone!] ?? null)) {
+                          fetch(`/api/proxy/devices/${mac}/zones/${editingZone}`, {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ color: editingColor }),
+                          });
+                        }
                         setEditingZone(null);
                       }}
                       className="text-sm font-semibold text-white bg-[#1a56db] px-3 py-1.5 rounded-md hover:bg-blue-700"
@@ -543,9 +706,27 @@ export default function ControllerPage() {
                           className="text-xs text-red-400 hover:text-red-600 px-2 py-1">🗑</button>
                       </div>
                     </div>
+                    {s.active && (
+                      <div className="mt-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setWaagOpen(!waagOpen)}
+                          className="text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                          {waagOpen ? '▾' : '▸'} Week at a Glance
+                        </button>
+                        {waagOpen && (
+                          <div className="mt-2">
+                            <WeekGlance
+                              runs={s.runs}
+                              zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
+
               <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
                 <p className="font-semibold">About Schedules</p>
                 <p>The active schedule is determined by today's date — whichever schedule's date range includes today runs automatically.</p>

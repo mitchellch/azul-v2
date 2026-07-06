@@ -4,8 +4,8 @@
 
 -- Parent table (partitioned by range on created_at)
 CREATE TABLE event_log (
-  id          UUID         NOT NULL DEFAULT gen_random_uuid(),
-  device_id   UUID         NOT NULL REFERENCES devices(id),
+  id          TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  device_id   TEXT         NOT NULL REFERENCES devices(id),
   category    TEXT         NOT NULL,  -- "zone" | "schedule" | "config" | "system"
   action      TEXT         NOT NULL,  -- specific event type
   metadata    JSONB,                  -- event-specific payload

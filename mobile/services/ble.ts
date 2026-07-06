@@ -104,7 +104,10 @@ export async function connect(deviceId: string): Promise<Device> {
     const existing = await manager.isDeviceConnected(deviceId);
     if (existing) await manager.cancelDeviceConnection(deviceId);
   } catch { /* ignore — device may not be connected */ }
-  const device = await manager.connectToDevice(deviceId, { requestMTU: 512 });
+  const device = await manager.connectToDevice(deviceId, {
+    requestMTU: 512,
+    timeout: 15000,
+  });
   await device.discoverAllServicesAndCharacteristics();
   _subscribeToResponses(device);
   return device;

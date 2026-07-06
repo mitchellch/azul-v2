@@ -12,7 +12,8 @@ MqttManager* MqttManager::_instance = nullptr;
 MqttManager::MqttManager(ZoneController& zones, ZoneQueue& queue,
                          Scheduler& scheduler, TimeManager& time, AuditLog& audit)
     : _zones(zones), _queue(queue), _scheduler(scheduler), _time(time), _audit(audit),
-      _client(_wifiClient), _brokerPort(1883), _lastConnectAttempt(0), _failCount(0)
+      _client(_wifiClient), _brokerPort(1883), _lastConnectAttempt(0), _failCount(0),
+      _configVersion(0)
 {
     _instance = this;
     _brokerUrl[0] = '\0';
@@ -45,13 +46,17 @@ void MqttManager::begin() {
     const char* last5 = _mac + strlen(_mac) - 5;
     snprintf(_clientId, sizeof(_clientId), "azul-%.5s", last5);
 
-    snprintf(_topicStatus,    sizeof(_topicStatus),    "azul/%s/status",    _mac);
-    snprintf(_topicEvents,    sizeof(_topicEvents),    "azul/%s/events",    _mac);
-    snprintf(_topicSchedules, sizeof(_topicSchedules), "azul/%s/schedules", _mac);
-    snprintf(_topicCmdSub,    sizeof(_topicCmdSub),    "azul/%s/cmd/#",     _mac);
-    snprintf(_topicCmdPrefix, sizeof(_topicCmdPrefix), "azul/%s/cmd/",      _mac);
+    snprintf(_topicStatus,    sizeof(_topicStatus),    "azul/%s/status",         _mac);
+    snprintf(_topicEvents,    sizeof(_topicEvents),    "azul/%s/events",         _mac);
+    snprintf(_topicSchedules, sizeof(_topicSchedules), "azul/%s/schedules",      _mac);
+    snprintf(_topicCmdSub,    sizeof(_topicCmdSub),    "azul/%s/cmd/#",          _mac);
+    snprintf(_topicCmdPrefix, sizeof(_topicCmdPrefix), "azul/%s/cmd/",           _mac);
+    snprintf(_topicConfigPush, sizeof(_topicConfigPush), "azul/%s/config/push",  _mac);
+    snprintf(_topicConfigReq,  sizeof(_topicConfigReq),  "azul/%s/config/request", _mac);
+    snprintf(_topicConfigAck,  sizeof(_topicConfigAck),  "azul/%s/config/ack",   _mac);
 
     loadBrokerConfig();
+    loadConfigVersion();
 
     _client.setServer(_brokerUrl, _brokerPort);
     _client.setCallback(MqttManager::messageCallback);
@@ -96,12 +101,13 @@ void MqttManager::reconnect() {
         _failCount = 0;
         Serial.printf("[MQTT] Connected to %s:%d\n", _brokerUrl, _brokerPort);
         _client.subscribe(_topicCmdSub);
+        _client.subscribe(_topicConfigPush);
         // Announce online — clears any stale LWT
         char topicConnection[64];
         snprintf(topicConnection, sizeof(topicConnection), "azul/%s/connection", _mac);
         _client.publish(topicConnection, "{\"online\":true}", true);
         publishStatus();
-        publishSchedules(); // sync all schedules to backend on connect
+        requestConfig();    // ask server if our config is current
     } else {
         _failCount++;
         // Print on first failure then once per minute (every 6 × 10s attempts)
@@ -212,6 +218,14 @@ void MqttManager::messageCallback(char* topic, uint8_t* payload, unsigned int le
 }
 
 void MqttManager::handleMessage(const char* topic, const char* payload) {
+    // Handle config/push topic separately
+    if (strcmp(topic, _topicConfigPush) == 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+        handleConfigPush(doc.as<JsonVariant>());
+        return;
+    }
+
     size_t prefixLen = strlen(_topicCmdPrefix);
     if (strncmp(topic, _topicCmdPrefix, prefixLen) != 0) return;
 
@@ -292,4 +306,87 @@ void MqttManager::handleMessage(const char* topic, const char* payload) {
         publishStatus();
     }
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Config sync
+// ---------------------------------------------------------------------------
+
+void MqttManager::loadConfigVersion() {
+    Preferences prefs;
+    prefs.begin("config", true);
+    _configVersion = prefs.getUInt("version", 0);
+    prefs.end();
+}
+
+void MqttManager::saveConfigVersion(uint32_t version) {
+    _configVersion = version;
+    Preferences prefs;
+    prefs.begin("config", false);
+    prefs.putUInt("version", version);
+    prefs.end();
+}
+
+void MqttManager::requestConfig() {
+    if (!_client.connected()) return;
+    loadConfigVersion();
+    JsonDocument doc;
+    doc["version"] = _configVersion;
+    char buf[64];
+    size_t len = serializeJson(doc, buf, sizeof(buf));
+    _client.publish(_topicConfigReq, (const uint8_t*)buf, len, false);
+    Serial.printf("[MQTT] Config request sent (version=%u)\n", _configVersion);
+}
+
+void MqttManager::handleConfigPush(const JsonVariant& data) {
+    uint32_t version = data["version"] | 0;
+    if (version == 0) return;
+
+    // Apply schedules from config blob
+    JsonArray schedules = data["schedules"].as<JsonArray>();
+    if (!schedules.isNull()) {
+        // Delete all existing schedules and recreate from config
+        Schedule existing[SCHEDULE_RING_SIZE];
+        uint8_t existingCount = 0;
+        _scheduler.getAllSchedules(existing, existingCount);
+        for (uint8_t i = 0; i < existingCount; i++) {
+            _scheduler.deleteSchedule(existing[i].uuid);
+        }
+
+        const char* activeUuid = nullptr;
+        for (JsonObject s : schedules) {
+            Schedule sched;
+            char errMsg[64] = {0};
+            if (jsonToSchedule(s, sched, errMsg, sizeof(errMsg))) {
+                _scheduler.createSchedule(sched);
+                if (s["active"] | false) activeUuid = sched.uuid;
+            } else {
+                Serial.printf("[MQTT] config/push schedule parse error: %s\n", errMsg);
+            }
+        }
+        if (activeUuid) _scheduler.activateSchedule(activeUuid);
+        else _scheduler.deactivate();
+    }
+
+    // Apply zone names
+    JsonArray zones = data["zones"].as<JsonArray>();
+    if (!zones.isNull()) {
+        for (JsonObject z : zones) {
+            uint8_t num = z["number"] | 0;
+            const char* name = z["name"] | "";
+            if (num >= 1 && num <= MAX_ZONES && name[0]) {
+                _zones.setZoneName(num, name);
+            }
+        }
+    }
+
+    saveConfigVersion(version);
+    Serial.printf("[MQTT] Config applied (version=%u)\n", version);
+
+    // Ack back to server
+    JsonDocument ackDoc;
+    ackDoc["version"] = version;
+    char buf[64];
+    size_t len = serializeJson(ackDoc, buf, sizeof(buf));
+    _client.publish(_topicConfigAck, (const uint8_t*)buf, len, false);
 }

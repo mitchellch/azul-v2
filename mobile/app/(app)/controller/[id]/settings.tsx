@@ -606,7 +606,7 @@ const statStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container:         { flex: 1, backgroundColor: '#f0f4f8', padding: 20 },
+  container:         { flex: 1, backgroundColor: '#f0f4f8', padding: 16 },
   center:            { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sectionHeader:     { fontSize: 13, fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 20 },
   card:              { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },

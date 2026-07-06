@@ -72,16 +72,18 @@ model PendingDevice {
 }
 
 model Device {
-  id         String    @id @default(uuid())
-  userId     String    @map("user_id")
-  orgId      String?   @map("org_id")
-  mac        String    @unique
-  name       String    @default("Azul Controller")
-  firmware   String?
-  ipAddress  String?   @map("ip_address")
-  online     Boolean   @default(false)
-  lastSeenAt DateTime? @map("last_seen_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  orgId          String?   @map("org_id")
+  mac            String    @unique
+  name           String    @default("Azul Controller")
+  firmware       String?
+  ipAddress      String?   @map("ip_address")
+  online         Boolean   @default(false)
+  lastSeenAt     DateTime? @map("last_seen_at")
+  configVersion  Int       @default(1) @map("config_version")
+  lastConfigAck  Int?      @map("last_config_ack")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   user         User          @relation(fields: [userId], references: [id])
   org          Organization? @relation(fields: [orgId], references: [id])
@@ -102,6 +104,7 @@ model Zone {
   deviceId String  @map("device_id")
   number   Int
   name     String  @default("")
+  color    String?
   photoUrl String? @map("photo_url")
 
   device       Device        @relation(fields: [deviceId], references: [id])

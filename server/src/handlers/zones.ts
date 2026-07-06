@@ -5,6 +5,7 @@ import fs from 'fs';
 import { db } from '../db/client';
 import { assertDeviceAccess } from '../lib/deviceAccess';
 import { logEvent } from '../lib/eventLog';
+import { bumpAndPushConfig } from '../lib/configSync';
 import { HttpError } from '../middleware/errorHandler';
 
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/zones');
@@ -41,22 +42,32 @@ zonesRouter.get('/:mac/zones', async (req: Request, res: Response, next: NextFun
   } catch (err) { next(err); }
 });
 
-// PUT /api/devices/:mac/zones/:zoneNumber — rename a zone
+// PUT /api/devices/:mac/zones/:zoneNumber — update zone name and/or color
 zonesRouter.put('/:mac/zones/:zoneNumber', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const device     = await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
 
-    const { name } = req.body;
-    if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'name required');
+    const { name, color } = req.body;
+    const updateData: Record<string, string | null> = {};
+
+    if (typeof name === 'string' && name.trim()) {
+      updateData.name = name.trim();
+    }
+    if (color !== undefined) {
+      updateData.color = typeof color === 'string' && color.trim() ? color.trim() : null;
+    }
+    if (Object.keys(updateData).length === 0) throw new HttpError(400, 'name or color required');
 
     const zone = await db.zone.upsert({
       where:  { deviceId_number: { deviceId: device.id, number: zoneNumber } },
-      update: { name: name.trim() },
-      create: { deviceId: device.id, number: zoneNumber, name: name.trim() },
+      update: updateData,
+      create: { deviceId: device.id, number: zoneNumber, ...updateData },
     });
-    logEvent(device.id, 'config', 'zone_rename', { zone: zoneNumber, name: name.trim() });
+    if (updateData.name) logEvent(device.id, 'config', 'zone_rename', { zone: zoneNumber, name: updateData.name });
+    if (updateData.color !== undefined) logEvent(device.id, 'config', 'zone_color', { zone: zoneNumber, color: updateData.color });
+    bumpAndPushConfig(req.params.mac, device.id).catch(e => console.error('[configSync]', e.message));
     res.json(zone);
   } catch (err) { next(err); }
 });
