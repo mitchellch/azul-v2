@@ -64,10 +64,11 @@ venv/
 # Local Claude settings
 .claude/settings.local.json
 
-# KiCad autosave / backup / lock
+# KiCad autosave / backup / lock / session state
 *.bak
 *.bak/
 *.kicad_pcb-bak
+*.kicad_prl
 *-backups/
 fp-info-cache
 _autosave-*

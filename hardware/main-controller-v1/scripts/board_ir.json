@@ -1,0 +1,98 @@
+{
+  "_comment": "WP-24BF*15 PCB template. All dimensions in INCHES, origin (0,0) at board center.",
+  "_source": "docs/enclosure/Polycase 24F 2D.pdf sheet 4",
+  "_note_1": "PDF drawing includes .031 clearance from interior of WP-24BF*15.",
+
+  "units": "inch",
+
+  "board": {
+    "half_width":  3.202,
+    "_half_width_source": "2X 3.202 → outer X edge at X = ±3.202",
+    "half_height": 2.218,
+    "_half_height_source": "4X 2.218 → outer Y edge at Y = ±2.218",
+    "thickness":   0.063,
+    "edge_cuts_line_width": 0.006
+  },
+
+  "corners": {
+    "_comment": "CONCAVE scoop corners. At each corner the board outline takes a bite OUT of the enclosing rectangle to clear the case's lid-screw bosses. The mounting hole at (±2.597, ±1.789) sits in the TAB — the material that remains inside of the scoop, adjacent to the top/bottom edge. Walk (CW at TR corner): top edge → sharp convex corner at (+2.826, +2.218) → vertical wall down at X=+2.826 → R.300 concave arc (arc center inside the scoop, outside the board) → horizontal floor at Y=+1.490 → sharp convex corner at (+3.202, +1.490) → right edge.",
+
+    "top_edge_end_x": 2.826,
+    "_top_edge_end_x_source": "User confirmed 2026-07-06: top edge Y=+2.218 spans X=[-2.826, +2.826]. Beyond ±2.826 the scoop begins.",
+
+    "side_edge_start_y": 1.490,
+    "_side_edge_start_y_source": "2X 1.490. Right/left edge X=±3.202 spans Y=[-1.490, +1.490]. Beyond ±1.490 the scoop begins.",
+
+    "arc_radius": 0.300,
+    "_arc_radius_source": "4X R.300",
+
+    "arc_center_x_derived": 3.126,
+    "_arc_center_x_derived_source": "top_edge_end_x + arc_radius = 2.826 + 0.300",
+    "arc_center_y_derived": 1.790,
+    "_arc_center_y_derived_source": "side_edge_start_y + arc_radius = 1.490 + 0.300. Note this exactly matches the mounting hole Y=1.789 to within 0.001 — near-coincident with the hole row.",
+
+    "vertical_wall_length_derived": 0.428,
+    "_vertical_wall_length_derived_source": "top edge Y - arc entry Y = 2.218 - 1.790",
+    "horizontal_floor_length_derived": 0.076,
+    "_horizontal_floor_length_derived_source": "half_width - arc_center_x = 3.202 - 3.126. NOTE: exactly matches R.076 fillet radius. Once R.076 fillet is added at the convex floor/side-edge corner, this straight is consumed entirely, leaving vertical wall + R.300 + R.076 to right edge."
+  },
+
+  "fillets": {
+    "_comment": "Small R.076 fillets. 8X per PDF = 2 per corner × 4 corners. Likely at the transitions between top/bottom edges and the corner region, but their exact positions are ambiguous from sheet 4 alone. DEFERRED for initial render — the corner as straight-arc-straight is manufacturable without them. Fab will cut sharp inner angles cleanly.",
+    "radius": 0.076,
+    "_radius_source": "8X R.076"
+  },
+
+  "notches": {
+    "_comment": "Alignment relief cuts for internal case ribs. 3 on top edge + 3 on bottom edge + 1 on each side = 8 total. All 0.262\" wide, 0.069\" deep.",
+    "width": 0.262,
+    "_width_source": "2X 0.131 half-widths (0.131 + 0.131) at multiple positions on top edge",
+    "depth": 0.069,
+    "_depth_source": "4X 2.218 (edge) - 3X 2.149 (notch floor) = 0.069\"",
+
+    "top_x_centers":    [-1.673, 0.000, 1.673],
+    "_top_x_centers_source": "Center notch at X=0 (2X 0.131 → ±0.131 half-width). Inner notches centered at ±(1.542+1.804)/2 = ±1.673.",
+
+    "bottom_x_centers": [-1.673, 0.000, 1.673],
+    "_bottom_x_centers_source": "Mirror of top (diagram is symmetric)",
+
+    "left_y_centers":   [0.000],
+    "_left_y_centers_source": "2X 0.131 pair on the left/right edges → single notch centered at Y=0",
+
+    "right_y_centers":  [0.000]
+  },
+
+  "antenna_notch": {
+    "_comment": "Edge notch on the top edge that (a) clears the ESP32-S3-WROOM-1's 7 mm antenna keep-out AND (b) is deep enough (0.069\") to clear the same lid-mounting boss column that the standard case-rib notches are for. The module sits with its antenna end pointing at the top edge. x_span (along the top edge) 20 mm × y_depth (into the board) 8.7526 mm = 20 × 8.75 mm horizontal slot.",
+    "x_span": 0.7874,
+    "_x_span_source": "20 mm = 0.7874\" — user directive 2026-07-06. X extent of the notch mouth along the top edge.",
+    "y_depth": 0.3446,
+    "_y_depth_source": "7 mm antenna keep-out + 0.069\" boss clearance = 8.7526 mm = 0.3446\". Y drop from the top edge into the board.",
+    "left_x": -2.021,
+    "_left_x_source": "board left edge -3.202\" + 30 mm (1.181\") = -2.021\". User: 'left edge of the antenna notch is 30 mm from the left edge of the board'",
+    "_notes": [
+      "Right edge derived: left_x + x_span = -2.021 + 0.7874 = -1.234\"",
+      "Overlaps standard case-rib notch at X centered on -1.673 (spans -1.804 to -1.542). The standard notch is subsumed by the antenna notch: when emitting the top edge, the -1.673 case-rib notch is skipped in favor of the deeper antenna notch. The remaining top-edge case-rib notches at X=0 and X=+1.673 are unchanged.",
+      "Mounting hole at (-2.597, +1.789) is safe: notch X-range [-2.021, -1.234] does not reach -2.597, so the hole is entirely west of the notch."
+    ]
+  },
+
+  "mounting_holes": {
+    "_comment": "6X Ø.135 in PDF. User directive: use only the 4 CORNER holes at (±2.597, ±1.789). Ignore the 2 inner holes. Each corner hole sits on the corner tab under the truncated top/bottom edge (spans X=±2.826) and clear of the truncated side edge (starts at ±1.490).",
+    "diameter": 0.135,
+    "_diameter_source": "6X Ø.135",
+    "positions": [
+      { "x": -2.597, "y": -1.789, "_label": "BL" },
+      { "x":  2.597, "y": -1.789, "_label": "BR" },
+      { "x": -2.597, "y":  1.789, "_label": "TL" },
+      { "x":  2.597, "y":  1.789, "_label": "TR — user confirmed 2026-07-06: mounting hole X at 2.597" }
+    ],
+    "_ignored_inner_holes": "2 mid-edge holes skipped per user direction"
+  },
+
+  "kicad_placement": {
+    "_comment": "Origin (0,0) in IR maps to this KiCad canvas point in mm. Only used by the KiCad renderer.",
+    "kicad_origin_x_mm": 100.0,
+    "kicad_origin_y_mm": 100.0
+  }
+}
