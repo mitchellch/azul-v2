@@ -69,7 +69,13 @@
           "thermal_relief_spoke_width": 0.5
         }
       },
-      "diff_pair_dimensions": [],
+      "diff_pair_dimensions": [
+        {
+          "gap": 0.0,
+          "via_gap": 0.0,
+          "width": 0.0
+        }
+      ],
       "drc_exclusions": [
         [
           "silk_edge_clearance|116750000|33730000|e208dad3-5e97-40e5-8062-c144a2572320|7253cb95-de01-4df1-83f2-94b6af455c06",
@@ -216,7 +222,9 @@
           "td_width_to_size_filter_ratio": 0.9
         }
       ],
-      "track_widths": [],
+      "track_widths": [
+        0.0
+      ],
       "tuning_pattern_settings": {
         "diff_pair_defaults": {
           "corner_radius_percentage": 80,
@@ -243,7 +251,12 @@
           "spacing": 0.6
         }
       },
-      "via_dimensions": [],
+      "via_dimensions": [
+        {
+          "diameter": 0.0,
+          "drill": 0.0
+        }
+      ],
       "zones_allow_external_fillets": false
     },
     "ipc2581": {
@@ -526,6 +539,17 @@
         "via_diameter": 0.6,
         "via_drill": 0.3,
         "wire_width": 6
+      },
+      {
+        "clearance": 0.2,
+        "name": "Power",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0,
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 1.5,
+        "tuning_profile": "",
+        "via_diameter": 0.4,
+        "via_drill": 0.8
       }
     ],
     "meta": {
@@ -533,13 +557,34 @@
     },
     "net_colors": null,
     "netclass_assignments": null,
-    "netclass_patterns": []
+    "netclass_patterns": [
+      {
+        "netclass": "Power",
+        "pattern": "24VAC_COM"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "24VAC_HOT"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "+5V"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "+3V3"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "/+VRAW"
+      }
+    ]
   },
   "pcbnew": {
     "last_paths": {
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "gerbers/",
       "specctra_dsn": "",
       "vrml": ""
     },
@@ -663,7 +708,7 @@
         "uuid": "b1003c9b-a76b-4da0-bb38-3ef06d0104bf"
       }
     ],
-    "used_designators": "K1-12,#FLG1-4,L1,SW1-2,J1-5,R1-18,C1-11,#PWR1-39,D1-5,F1,U1-5",
+    "used_designators": "K1-12,#FLG1-4,L1,SW1-2,J1-5,R1-18,C1-11,#PWR1-41,D1-5,F1,U1-5",
     "variants": []
   },
   "sheets": [
