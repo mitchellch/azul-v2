@@ -76,20 +76,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        [
-          "silk_edge_clearance|116750000|33730000|e208dad3-5e97-40e5-8062-c144a2572320|7253cb95-de01-4df1-83f2-94b6af455c06",
-          ""
-        ],
-        [
-          "silk_edge_clearance|116750000|33743040|e208dad3-5e97-40e5-8062-c144a2572320|e1dc529b-a964-43a1-84af-df9fc54fee02",
-          ""
-        ],
-        [
-          "silk_edge_clearance|98750000|33743040|e208dad3-5e97-40e5-8062-c144a2572320|1fdd9476-88fa-4542-aa24-a9565e5f807f",
-          ""
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -133,7 +120,7 @@
         "padstack": "warning",
         "pth_inside_courtyard": "error",
         "shorting_items": "error",
-        "silk_edge_clearance": "warning",
+        "silk_edge_clearance": "ignore",
         "silk_over_copper": "warning",
         "silk_overlap": "warning",
         "skew_out_of_range": "error",
@@ -223,7 +210,11 @@
         }
       ],
       "track_widths": [
-        0.0
+        0.0,
+        0.5,
+        0.8,
+        1.0,
+        1.5
       ],
       "tuning_pattern_settings": {
         "diff_pair_defaults": {
@@ -534,7 +525,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 2147483647,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.2,
+        "track_width": 0.25,
         "tuning_profile": "",
         "via_diameter": 0.6,
         "via_drill": 0.3,
@@ -548,8 +539,8 @@
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 1.5,
         "tuning_profile": "",
-        "via_diameter": 0.4,
-        "via_drill": 0.8
+        "via_diameter": 0.8,
+        "via_drill": 0.4
       }
     ],
     "meta": {
