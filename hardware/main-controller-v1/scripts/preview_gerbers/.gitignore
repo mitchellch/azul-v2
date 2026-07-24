@@ -1,0 +1,8 @@
+# EPHEMERAL — enclosure template preview gerbers only.
+#
+# These are regenerated from main-controller-v1.kicad_pcb on demand for
+# printing PCB paper templates during enclosure fitting. They are NOT
+# the fab archive — the shipped fab archive lives in ../../production/.
+# Do not upload these to JLC or any fab house. Delete freely.
+*
+!.gitignore

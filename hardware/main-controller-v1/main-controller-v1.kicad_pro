@@ -162,7 +162,7 @@
         "min_track_width": 0.2,
         "min_via_annular_width": 0.1,
         "min_via_diameter": 0.5,
-        "solder_mask_to_copper_clearance": 0.0,
+        "solder_mask_to_copper_clearance": 0.005,
         "use_height_for_length_calcs": true
       },
       "teardrop_options": [
@@ -211,6 +211,7 @@
       ],
       "track_widths": [
         0.0,
+        0.2,
         0.5,
         0.8,
         1.0,
@@ -277,7 +278,12 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [],
+    "erc_exclusions": [
+      [
+        "lib_symbol_mismatch|2781300|444500|dd02d4ae-6c60-476f-8fbc-2b847b97c99b|00000000-0000-0000-0000-000000000000|||",
+        ""
+      ]
+    ],
     "meta": {
       "version": 0
     },
@@ -699,7 +705,7 @@
         "uuid": "b1003c9b-a76b-4da0-bb38-3ef06d0104bf"
       }
     ],
-    "used_designators": "K1-12,#FLG1-4,L1,SW1-2,J1-5,R1-18,C1-11,#PWR1-41,D1-5,F1,U1-5",
+    "used_designators": "R_JMP2-4,FID1-3,L1,U1-5,SW1-2,C1-11,K1-12,#PWR1-43,D1-5,#FLG1-4,J1-5,R1-19,F1",
     "variants": []
   },
   "sheets": [

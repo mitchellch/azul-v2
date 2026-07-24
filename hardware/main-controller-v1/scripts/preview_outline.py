@@ -5,15 +5,17 @@ Preview the Polycase WP-24BF*15 PCB outline from board_ir.json.
 Renders in the IR's native units (inches) with origin (0,0) at board center.
 Walks the outline once around the perimeter and asserts no gaps between segments.
 
-Concave scoop corner geometry (per corner, walking TR clockwise):
-    top edge ends at (+2.826, +2.218) — sharp convex tab corner
-    vertical wall drops from Y=+2.218 to Y=+1.790 at X=+2.826 (length 0.428")
+Concave scoop corner geometry (per corner, walking TR clockwise), post-fillet:
+    top edge ends at (+2.826-rf, +2.218) — R.076 fillet begins
+    R.076 convex fillet, center (+2.826-rf, +2.218-rf), 90°→0°
+    vertical wall drops from Y=+2.218-rf to Y=+1.790 at X=+2.826 (length 0.352")
     R.300 concave quarter-arc, center (+3.126, +1.790), sweeps 180°→270°
-    horizontal floor runs from X=+3.126 to X=+3.202 at Y=+1.490 (length 0.076")
-    right edge begins at (+3.202, +1.490) — sharp convex tab corner
+    R.076 convex fillet, center (+3.126, +1.490-rf), 90°→0°
+      (horizontal floor of 0.076" is fully consumed by this fillet)
+    right edge begins at (+3.202, +1.490-rf)
 
-R.076 fillets (2 per corner × 4 = 8X callout) at the two sharp convex tab
-corners are NOT rendered here — sharp joins only.
+8× R.076 fillets total (2 per corner × 4 corners) replace the sharp convex
+tab corners at (±2.826, ±2.218) and (±3.202, ±1.490).
 
 Usage:
     python3 preview_outline.py
@@ -37,6 +39,7 @@ def outline_segments(ir):
     board = ir["board"]
     corners = ir["corners"]
     notch = ir["notches"]
+    fillets = ir.get("fillets", {})
 
     HW = board["half_width"]                    # 3.202
     HH = board["half_height"]                   # 2.218
@@ -49,6 +52,7 @@ def outline_segments(ir):
     ay = ey + r                                 # 1.790 — arc-center Y (positive quadrant)
     nw = notch["width"]
     nd = notch["depth"]
+    rf = fillets.get("radius", 0.0)             # 0.076 — sharp convex tab-corner fillet
 
     segs = []
 
@@ -94,9 +98,11 @@ def outline_segments(ir):
             cursor = n_e
         line(x, cursor, x, y_end)
 
-    # TOP edge: (-ex, +HH) → (+ex, +HH), notches cut down (direction = -1).
-    # Antenna notch (if present) replaces the leftmost case-rib notch:
-    # it's centered at the antenna slot's midpoint and is wider + deeper.
+    # TOP edge: (-ex+rf, +HH) → (+ex-rf, +HH), notches cut down (direction = -1).
+    # The rf shortening at each end reserves room for the R.076 fillet arcs at
+    # the sharp tab corners. Antenna notch (if present) replaces the leftmost
+    # case-rib notch; the standard case-rib notches are all interior to the
+    # shortened span so the fillets don't clip them.
     top_centers = list(notch["top_x_centers"])
     custom_top = None
     ant = ir.get("antenna_notch")
@@ -111,36 +117,54 @@ def outline_segments(ir):
                        if (c + nw/2) <= a_min or (c - nw/2) >= a_max]
         top_centers.append(a_center)
         custom_top = [(a_center, a_w, a_d)]
-    horiz_edge_with_notches(+HH, -ex, +ex, top_centers, -1, custom=custom_top)
+    horiz_edge_with_notches(+HH, -ex + rf, +ex - rf, top_centers, -1, custom=custom_top)
 
-    # TR concave scoop: wall down → arc → floor right
-    line(+ex, +HH, +ex, +ay)                  # (2.826, 2.218) → (2.826, 1.790)
-    arc(+ax, +ay, r, 180, 270)                # center (3.126, 1.790), 180°→270°
-    line(+ax, +ey, +HW, +ey)                  # (3.126, 1.490) → (3.202, 1.490)
+    # TR concave scoop: wall-corner fillet → wall down → R.300 arc → floor-corner fillet
+    # Wall-corner fillet at sharp convex (+ex, +HH). Board interior is at
+    # X<ex AND Y<HH → fillet center (+ex-rf, +HH-rf), tangent to top edge at
+    # (+ex-rf, +HH) and to vertical wall at (+ex, +HH-rf). CW sweep 90°→0°.
+    arc(+ex - rf, +HH - rf, rf, 90, 0)
+    line(+ex, +HH - rf, +ex, +ay)             # (2.826, +HH-rf) → (2.826, 1.790)
+    arc(+ax, +ay, r, 180, 270)                # R.300 concave, center (3.126, 1.790)
+    # Floor-corner fillet at sharp convex (+HW, +ey). Board interior is at
+    # X<HW AND Y<ey → fillet center (+HW-rf, +ey-rf) = (+ax, +ey-rf). Its
+    # floor-tangent point (+ax, +ey) coincides exactly with the R.300 arc's
+    # exit (the 0.076" horizontal floor is fully consumed). Right-edge tangent
+    # at (+HW, +ey-rf). CW sweep 90°→0°.
+    arc(+ax, +ey - rf, rf, 90, 0)
 
-    # RIGHT edge: (+HW, +ey) → (+HW, -ey), notches cut left (direction = -1)
-    vert_edge_with_notches(+HW, +ey, -ey, notch["right_y_centers"], -1)
+    # RIGHT edge: (+HW, +ey-rf) → (+HW, -ey+rf), notches cut left (direction = -1)
+    vert_edge_with_notches(+HW, +ey - rf, -ey + rf, notch["right_y_centers"], -1)
 
-    # BR concave scoop: floor left → arc → wall down
-    line(+HW, -ey, +ax, -ey)                  # (3.202, -1.490) → (3.126, -1.490)
-    arc(+ax, -ay, r, 90, 180)                 # center (3.126, -1.790), 90°→180°
-    line(+ex, -ay, +ex, -HH)                  # (2.826, -1.790) → (2.826, -2.218)
+    # BR concave scoop: floor-corner fillet → R.300 arc → wall down → wall-corner fillet
+    # Floor-corner fillet at (+HW, -ey), center (+ax, -ey+rf). CW sweep 0°→-90°.
+    arc(+ax, -ey + rf, rf, 0, -90)
+    arc(+ax, -ay, r, 90, 180)                 # R.300 concave, center (3.126, -1.790)
+    line(+ex, -ay, +ex, -HH + rf)             # (2.826, -1.790) → (2.826, -HH+rf)
+    # Wall-corner fillet at (+ex, -HH), center (+ex-rf, -HH+rf). CW sweep 0°→-90°.
+    arc(+ex - rf, -HH + rf, rf, 0, -90)
 
-    # BOTTOM edge: (+ex, -HH) → (-ex, -HH), notches cut up (direction = +1)
-    horiz_edge_with_notches(-HH, +ex, -ex, notch["bottom_x_centers"], +1)
+    # BOTTOM edge: (+ex-rf, -HH) → (-ex+rf, -HH), notches cut up (direction = +1)
+    horiz_edge_with_notches(-HH, +ex - rf, -ex + rf, notch["bottom_x_centers"], +1)
 
-    # BL concave scoop: wall up → arc → floor left
-    line(-ex, -HH, -ex, -ay)                  # (-2.826, -2.218) → (-2.826, -1.790)
-    arc(-ax, -ay, r, 0, 90)                   # center (-3.126, -1.790), 0°→90°
-    line(-ax, -ey, -HW, -ey)                  # (-3.126, -1.490) → (-3.202, -1.490)
+    # BL concave scoop: wall-corner fillet → wall up → R.300 arc → floor-corner fillet
+    # Wall-corner fillet at (-ex, -HH), center (-ex+rf, -HH+rf). CW sweep 270°→180°.
+    arc(-ex + rf, -HH + rf, rf, 270, 180)
+    line(-ex, -HH + rf, -ex, -ay)             # (-2.826, -HH+rf) → (-2.826, -1.790)
+    arc(-ax, -ay, r, 0, 90)                   # R.300 concave, center (-3.126, -1.790)
+    # Floor-corner fillet at (-HW, -ey), center (-ax, -ey+rf). CW sweep 270°→180°.
+    arc(-ax, -ey + rf, rf, 270, 180)
 
-    # LEFT edge: (-HW, -ey) → (-HW, +ey), notches cut right (direction = +1)
-    vert_edge_with_notches(-HW, -ey, +ey, notch["left_y_centers"], +1)
+    # LEFT edge: (-HW, -ey+rf) → (-HW, +ey-rf), notches cut right (direction = +1)
+    vert_edge_with_notches(-HW, -ey + rf, +ey - rf, notch["left_y_centers"], +1)
 
-    # TL concave scoop: floor right → arc → wall up
-    line(-HW, +ey, -ax, +ey)                  # (-3.202, 1.490) → (-3.126, 1.490)
-    arc(-ax, +ay, r, 270, 360)                # center (-3.126, 1.790), 270°→360°
-    line(-ex, +ay, -ex, +HH)                  # (-2.826, 1.790) → (-2.826, 2.218)
+    # TL concave scoop: floor-corner fillet → R.300 arc → wall up → wall-corner fillet
+    # Floor-corner fillet at (-HW, +ey), center (-ax, +ey-rf). CW sweep 180°→90°.
+    arc(-ax, +ey - rf, rf, 180, 90)
+    arc(-ax, +ay, r, 270, 360)                # R.300 concave, center (-3.126, 1.790)
+    line(-ex, +ay, -ex, +HH - rf)             # (-2.826, 1.790) → (-2.826, +HH-rf)
+    # Wall-corner fillet at (-ex, +HH), center (-ex+rf, +HH-rf). CW sweep 180°→90°.
+    arc(-ex + rf, +HH - rf, rf, 180, 90)
 
     return segs
 

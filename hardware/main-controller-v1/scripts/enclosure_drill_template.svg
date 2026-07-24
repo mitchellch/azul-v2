@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="279mm" height="216mm"
+     viewBox="0 0 279 216"
+     font-family="Arial, Helvetica, sans-serif">
+
+  <title>Azul main-controller-v1 enclosure drill template</title>
+  <desc>Polycase WP-24BF*15 long-wall drill template. v4 2026-07-13 (left tab shortened to clear 6.5 mm flange). Print at 100% actual size (Letter or A4, LANDSCAPE). Verify 100 mm calibration line with calipers before drilling.</desc>
+
+  <!--
+    Coordinate map (SVG units = mm; viewBox in mm):
+      Wall face top-left  (wall X=0,      Y=0)  -> SVG (35, 20)
+      Wall face bottom-right (X=170.79, Y=39)  -> SVG (205.79, 59)
+      Bottom fold tab: SVG (35, 59) to (205.79, 74), 15 mm tall — wraps under base flange
+      Left fold tab:   SVG (20, 20) to (35, 52.5), 15 mm wide × 32.5 mm tall — clears 6.5 mm (0.256") flange on adjacent short wall
+      Hole A (gland, 20 mm dia)  at wall (64.15, 19.5) -> SVG (99.15, 39.5)  · Bay 2 midpoint
+      Hole B (barrel, 12 mm dia) at wall (106.65, 19.5) -> SVG (141.65, 39.5) · Bay 3 midpoint
+      Centerline at wall X=85.4 (long-wall midpoint)   -> SVG x=120.4
+  -->
+
+  <!-- ===== Template outer boundary (wall face + left tab clearing flange + bottom tab) =====
+       Left tab bottom edge stops at SVG y=52.5 (wall Y=32.5 mm), 6.5 mm above the wall's
+       bottom edge, to clear the flange that extends outward from the short wall. -->
+  <path d="M 20 20 L 205.79 20 L 205.79 74 L 35 74 L 35 52.5 L 20 52.5 Z"
+        fill="none" stroke="black" stroke-width="0.5"/>
+
+  <!-- ===== Fold lines (dashed) ===== -->
+  <!-- Bottom fold line: at wall Y=39 (= wall bottom = start of flange transition) -->
+  <line x1="35" y1="59" x2="205.79" y2="59"
+        stroke="black" stroke-width="0.3" stroke-dasharray="2,1"/>
+  <!-- Left fold line: at wall X=0 (= wall left edge) -->
+  <line x1="35" y1="20" x2="35" y2="52.5"
+        stroke="black" stroke-width="0.3" stroke-dasharray="2,1"/>
+
+  <!-- ===== Wall face rectangle outline (light, for visual reference) ===== -->
+  <rect x="35" y="20" width="170.79" height="39"
+        fill="none" stroke="black" stroke-width="0.3"/>
+
+  <!-- ===== Fold-tab instruction labels ===== -->
+  <text x="120" y="70" font-size="2.5" text-anchor="middle" font-weight="bold">
+    FOLD BOTTOM TAB 90° under base flange
+  </text>
+  <text x="27" y="36.25" font-size="2.5" text-anchor="middle" font-weight="bold"
+        transform="rotate(90 27 36.25)">
+    FOLD LEFT TAB 90° onto short wall
+  </text>
+
+  <!-- ===== Inward corner registration L-marks at wall face corners ===== -->
+  <g stroke="black" stroke-width="0.3">
+    <!-- Top-left (35, 20) -->
+    <line x1="35" y1="20" x2="38" y2="20"/>
+    <line x1="35" y1="20" x2="35" y2="23"/>
+    <!-- Top-right (205.79, 20) -->
+    <line x1="205.79" y1="20" x2="202.79" y2="20"/>
+    <line x1="205.79" y1="20" x2="205.79" y2="23"/>
+    <!-- Bottom-left (35, 59) -->
+    <line x1="35" y1="59" x2="38" y2="59"/>
+    <line x1="35" y1="59" x2="35" y2="56"/>
+    <!-- Bottom-right (205.79, 59) -->
+    <line x1="205.79" y1="59" x2="202.79" y2="59"/>
+    <line x1="205.79" y1="59" x2="205.79" y2="56"/>
+  </g>
+
+  <!-- ===== Vertical CENTERLINE at wall X=85.4 mm (SVG x=120.4) ===== -->
+  <!-- Full height through wall face and bottom fold tab -->
+  <line x1="120.4" y1="20" x2="120.4" y2="74"
+        stroke="black" stroke-width="0.2"/>
+  <text x="120.4" y="17" font-size="2.2" text-anchor="middle" font-weight="bold">
+    CENTER · align to enclosure long-wall midpoint (X=85.4)
+  </text>
+
+  <!-- ===== Hole A: PG13.5 gland (20.0 mm Ø) — LEFT, Bay 2 midpoint ===== -->
+  <circle cx="99.15" cy="39.5" r="10"
+          fill="none" stroke="black" stroke-width="0.4"/>
+  <line x1="87.15" y1="39.5" x2="111.15" y2="39.5"
+        stroke="black" stroke-width="0.3"/>
+  <line x1="99.15" y1="27.5" x2="99.15" y2="51.5"
+        stroke="black" stroke-width="0.3"/>
+  <circle cx="99.15" cy="39.5" r="0.2" fill="black"/>
+  <!-- Labels above ring, inside wall face -->
+  <text x="99.15" y="23" font-size="2.5" text-anchor="middle" font-weight="bold">
+    HOLE A
+  </text>
+  <text x="99.15" y="26" font-size="2" text-anchor="middle">
+    20.0 mm Ø · PG13.5 gland
+  </text>
+  <!-- Coordinate label inside bottom fold tab -->
+  <text x="99.15" y="66" font-size="2" text-anchor="middle">
+    X 64.15  Y 19.5
+  </text>
+
+  <!-- ===== Hole B: Barrel jack (12.0 mm Ø) — RIGHT, Bay 3 midpoint ===== -->
+  <circle cx="141.65" cy="39.5" r="6"
+          fill="none" stroke="black" stroke-width="0.4"/>
+  <line x1="133.65" y1="39.5" x2="149.65" y2="39.5"
+        stroke="black" stroke-width="0.3"/>
+  <line x1="141.65" y1="31.5" x2="141.65" y2="47.5"
+        stroke="black" stroke-width="0.3"/>
+  <circle cx="141.65" cy="39.5" r="0.2" fill="black"/>
+  <!-- Labels above ring, inside wall face -->
+  <text x="141.65" y="25.5" font-size="2.5" text-anchor="middle" font-weight="bold">
+    HOLE B
+  </text>
+  <text x="141.65" y="28.5" font-size="2" text-anchor="middle">
+    12.0 mm Ø · barrel jack
+  </text>
+  <!-- Coordinate label inside bottom fold tab -->
+  <text x="141.65" y="66" font-size="2" text-anchor="middle">
+    X 106.65  Y 19.5
+  </text>
+
+  <!-- ===== Datum callouts (outside template — trimmed when cut) ===== -->
+  <text x="35" y="80" font-size="1.8" text-anchor="middle">DATUM (0, 0)</text>
+  <text x="205.79" y="80" font-size="1.8" text-anchor="middle">(170.79, 0)</text>
+
+  <!-- ===== Calibration line ===== -->
+  <text x="20" y="93" font-size="3" font-weight="bold">CALIBRATION</text>
+  <text x="20" y="97" font-size="2.5">
+    Verify with calipers BEFORE cutting. Must read 100.0 ± 0.1 mm.
+  </text>
+  <line x1="20" y1="104" x2="120" y2="104"
+        stroke="black" stroke-width="0.5"/>
+  <line x1="20" y1="101" x2="20" y2="107"
+        stroke="black" stroke-width="0.5"/>
+  <line x1="120" y1="101" x2="120" y2="107"
+        stroke="black" stroke-width="0.5"/>
+  <g stroke="black" stroke-width="0.3">
+    <line x1="30" y1="103" x2="30" y2="105"/>
+    <line x1="40" y1="103" x2="40" y2="105"/>
+    <line x1="50" y1="102" x2="50" y2="106"/>
+    <line x1="60" y1="103" x2="60" y2="105"/>
+    <line x1="70" y1="103" x2="70" y2="105"/>
+    <line x1="80" y1="103" x2="80" y2="105"/>
+    <line x1="90" y1="103" x2="90" y2="105"/>
+    <line x1="100" y1="102" x2="100" y2="106"/>
+    <line x1="110" y1="103" x2="110" y2="105"/>
+  </g>
+  <text x="20" y="111" font-size="2" text-anchor="middle">0</text>
+  <text x="50" y="111" font-size="2" text-anchor="middle">50</text>
+  <text x="120" y="111" font-size="2" text-anchor="middle">100 mm</text>
+
+  <!-- ===== Legend / metadata ===== -->
+  <g font-size="2.5">
+    <text x="20" y="126" font-weight="bold">
+      Azul main-controller-v1 · enclosure drill template · v4 · 2026-07-13
+    </text>
+    <text x="20" y="131">
+      Enclosure: Polycase WP-24BF*15 · target: long side wall opposite antenna
+    </text>
+    <text x="20" y="135">
+      Datum (0, 0): top-left corner of long wall viewed from outside. Y grows downward.
+    </text>
+    <text x="20" y="139">
+      Hole A · 20.0 mm Ø PG13.5 gland · center at (X=64.15, Y=19.5) mm · Bay 2 midpoint
+    </text>
+    <text x="20" y="143">
+      Hole B · 12.0 mm Ø barrel jack · center at (X=106.65, Y=19.5) mm · Bay 3 midpoint
+    </text>
+    <text x="20" y="147">
+      Centerline at wall X=85.4 mm (long-wall midpoint) for pre-adhesive alignment.
+    </text>
+  </g>
+
+  <g font-size="2.5">
+    <text x="20" y="157" font-weight="bold">PRINT INSTRUCTIONS</text>
+    <text x="20" y="161">
+      Letter or A4 · LANDSCAPE · 100% actual size · No fit-to-page · No auto-scaling
+    </text>
+    <text x="20" y="165">
+      Verify the 100 mm calibration line above with calipers before proceeding.
+    </text>
+    <text x="20" y="169">
+      If off by more than ±0.1 mm, reprint with a different driver setting.
+    </text>
+  </g>
+
+  <g font-size="2.5">
+    <text x="20" y="179" font-weight="bold">APPLICATION</text>
+    <text x="20" y="183">
+      1. Wipe target wall + bottom flange + adjacent short wall with isopropyl alcohol.
+    </text>
+    <text x="20" y="187">
+      2. Independently mark the long-wall midpoint on the enclosure (calipers from each corner).
+    </text>
+    <text x="20" y="191">
+      3. Cut template along its solid outer outline. Peel adhesive backing.
+    </text>
+    <text x="20" y="195">
+      4. Align template CENTERLINE (thin vertical line) to your enclosure center mark.
+    </text>
+    <text x="20" y="199">
+      5. Fold BOTTOM tab under the base flange; fold LEFT tab 90° onto adjacent short wall.
+    </text>
+    <text x="20" y="203">
+      6. Burnish flat. Center-punch through crosshairs before removing the template.
+    </text>
+  </g>
+
+</svg>

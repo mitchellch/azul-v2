@@ -1,0 +1,213 @@
+# Azul Main Controller v1 — Bill of Materials
+# Source of truth for LCSC part number assignments.
+# Grouped by (Value, Footprint) → refs; matches Fabrication Toolkit BOM output.
+#
+# fate:
+#   smt  → JLC assembles at PCBA time; LCSC field must be populated in schematic.
+#   dnp  → Do Not Populate (through-hole); hand-soldered after JLC delivery.
+#
+# lcsc:
+#   populated for SMT parts; unset for DNP.
+#   Extended parts incur a $3 one-time setup fee at JLC PCBA.
+
+board: main-controller-v1
+rev: 1
+qty: 5
+assembly: JLC PCBA (SMT-only); THT parts hand-soldered post-delivery
+
+parts:
+
+  # ─── Resistors (all 0603 SMT) ───────────────────────────────────────────
+  - refs: [R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18]
+    value: "330"
+    footprint: "Resistor_SMD:R_0603_1608Metric"
+    lcsc: C23138
+    basic: true
+    fate: smt
+    notes: relay drive current-limit (330Ω 0603)
+
+  - refs: [R1, R2, R5, R6]
+    value: "10k"
+    footprint: "Resistor_SMD:R_0603_1608Metric"
+    lcsc: C25804
+    basic: true
+    fate: smt
+    notes: EN pull-up, GPIO strap pull-ups (10kΩ 0603)
+
+  - refs: [R3, R4]
+    value: "5.1k"
+    footprint: "Resistor_SMD:R_0603_1608Metric"
+    lcsc: C23186
+    basic: true
+    fate: smt
+    notes: USB-C CC pull-downs (device role, 5.1kΩ 0603)
+
+  # ─── Capacitors — SMT ───────────────────────────────────────────────────
+  - refs: [C2, C4, C10, C11]
+    value: "100nF"
+    footprint: "Capacitor_SMD:C_0603_1608Metric"
+    lcsc: C14663
+    basic: true
+    fate: smt
+    notes: decoupling (100nF 50V X7R 0603)
+
+  - refs: [C1, C8, C9]
+    value: "10uF"
+    footprint: "Capacitor_SMD:C_0805_2012Metric"
+    lcsc: C15850
+    basic: true
+    fate: smt
+    notes: bulk decoupling at WROOM, buck output (10µF 25V X5R 0805)
+
+  - refs: [C3]
+    value: "1uF"
+    footprint: "Capacitor_SMD:C_0603_1608Metric"
+    lcsc: C15849
+    basic: true
+    fate: smt
+    notes: EN RC time constant (1µF 25V X7R 0603)
+
+  - refs: [C6]
+    value: "22uF/50V"
+    footprint: "Capacitor_SMD:CP_Elec_6.3x5.4"
+    lcsc: C2836438
+    basic: false
+    fate: smt
+    notes: buck input bulk cap (Nichicon RVT22UF50V67RV0028, 2000hrs@105°C)
+
+  - refs: [C7]
+    value: "22uF/25V"
+    footprint: "Capacitor_SMD:CP_Elec_6.3x5.4"
+    lcsc: C178541
+    basic: false
+    fate: smt
+    notes: buck output bulk cap (Panasonic EEEFK1E220R long-life series)
+
+  # ─── ICs — SMT ──────────────────────────────────────────────────────────
+  - refs: [U1]
+    value: "ESP32-S3-WROOM-1"
+    footprint: "PCM_Espressif:ESP32-S3-WROOM-1"
+    lcsc: C2913204
+    basic: true
+    fate: smt
+    notes: main MCU, N16R8 variant (16MB flash, 8MB PSRAM)
+
+  - refs: [U2]
+    value: "USBLC6-2SC6"
+    footprint: "Package_TO_SOT_SMD:SOT-23-6"
+    lcsc: C7519
+    basic: true
+    fate: smt
+    notes: USB-C data-line ESD protection
+
+  - refs: [U3]
+    value: "LM2596S-5"
+    footprint: "Package_TO_SOT_SMD:TO-263-5_TabPin3"
+    lcsc: C5276750
+    basic: false
+    fate: smt
+    notes: 24V→5V buck regulator, 7V~40V input, 150kHz (v1 — plan to swap to MP2307 in v2)
+
+  - refs: [U4]
+    value: "AP2112K-3.3"
+    footprint: "Package_TO_SOT_SMD:SOT-23-5"
+    lcsc: C51118
+    basic: false
+    fate: smt
+    notes: 5V→3.3V LDO (AP2112K-3.3TRG1)
+
+  # ─── Diodes / LED — SMT ─────────────────────────────────────────────────
+  - refs: [D1]
+    value: "SMBJ33CA"
+    footprint: "Diode_SMD:D_SMB"
+    lcsc: C78420
+    basic: false
+    fate: smt
+    notes: 33V bidirectional TVS on 24VAC input (600W SMBJ33CA)
+
+  - refs: [D2]
+    value: "DB107S"
+    footprint: "Diode_SMD:Diode_Bridge_Diotec_SO-DIL-Slim"
+    lcsc: C5377
+    basic: false
+    fate: smt
+    notes: bridge rectifier 24VAC → DC bus (Promotional Extended, setup fee waived)
+
+  - refs: [D4]
+    value: "SS14"
+    footprint: "Diode_SMD:D_SMA"
+    lcsc: C2480
+    basic: true
+    fate: smt
+    notes: Schottky OR-ing diode (USB VBUS ↔ buck output merge)
+
+  - refs: [D5]
+    value: "WS2812B"
+    footprint: "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm"
+    lcsc: C2761795
+    basic: false
+    fate: smt
+    notes: status LED on GPIO21 (WS2812B-B/T, /T tape reel direction)
+
+  # ─── Passives — SMT ─────────────────────────────────────────────────────
+  - refs: [L1]
+    value: "33uH"
+    footprint: "Inductor_SMD:L_Bourns_SRR1260"
+    lcsc: C840528
+    basic: false
+    fate: smt
+    notes: buck output inductor (Bourns SRR1260-330M, 33uH 3A 6mΩ)
+
+  - refs: [F1]
+    value: "500mA PTC"
+    footprint: "Fuse:Fuse_1812_4532Metric"
+    lcsc: C17313
+    basic: false
+    fate: smt
+    notes: input over-current protection (Bourns MF-MSMF050-2)
+
+  # ─── Relays — SMT ───────────────────────────────────────────────────────
+  - refs: [K1, K2, K3, K4, K5, K6, K7, K8, K9, K10, K11, K12]
+    value: "G3MB-202P"
+    footprint: "Azul:G3MB-202P"
+    lcsc: C401984
+    basic: false
+    fate: smt
+    notes: Omron 24V SSR, one per zone
+
+  # ─── THT — Do Not Populate (hand-soldered post-delivery) ────────────────
+  - refs: [J2, J3, J4]
+    value: "Screw_Terminal_01x02"
+    footprint: "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
+    fate: dnp
+    notes: 2-pos screw terminals (24VAC in, RAIN, FLOW); source separately
+
+  - refs: [J6]
+    value: "Screw_Terminal_01x14"
+    footprint: "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-14P_1x14_P5.00mm"
+    fate: dnp
+    notes: 14-pos zone terminal block (Zone 1–12 + 2× COM)
+
+  - refs: [J1]
+    value: "B6B-PH-K-S"
+    footprint: "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical"
+    fate: dnp
+    notes: JST PH vertical 6-pin header for waterproof USB-C panel-mount pigtail (VBUS/GND/D+/D-/CC1/CC2). LCSC C131357; source with other THT parts.
+
+  - refs: [SW1, SW2]
+    value: "SW_Push"
+    footprint: "Button_Switch_THT:SW_PUSH_6mm"
+    fate: dnp
+    notes: 6mm tact switches (RESET, BOOT); source from any assortment kit
+
+  - refs: [C5]
+    value: "470uF"
+    footprint: "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm"
+    fate: dnp
+    notes: bulk input cap after bridge rectifier (radial, 25V+)
+
+  - refs: [D3]
+    value: "1N5822"
+    footprint: "Diode_THT:D_DO-201AD_P15.24mm_Horizontal"
+    fate: dnp
+    notes: Schottky freewheel diode for buck inductor

@@ -38,7 +38,7 @@
   },
 
   "fillets": {
-    "_comment": "Small R.076 fillets. 8X per PDF = 2 per corner × 4 corners. Likely at the transitions between top/bottom edges and the corner region, but their exact positions are ambiguous from sheet 4 alone. DEFERRED for initial render — the corner as straight-arc-straight is manufacturable without them. Fab will cut sharp inner angles cleanly.",
+    "_comment": "Small R.076 convex fillets. 8X per PDF = 2 per case corner × 4 case corners. Positions (walking TR CW): (a) wall-corner fillet replaces the sharp join between top/bottom edge and the scoop's vertical wall at (±ex, ±HH); (b) floor-corner fillet replaces the sharp join between the scoop's horizontal floor and the side edge at (±HW, ±ey). Because the horizontal floor length exactly equals rf (see corners.horizontal_floor_length_derived), the floor-corner fillet consumes the entire floor — its floor-side tangent point lands on the R.300 scoop's arc endpoint at (±ax, ±ey).",
     "radius": 0.076,
     "_radius_source": "8X R.076"
   },
@@ -91,8 +91,8 @@
   },
 
   "kicad_placement": {
-    "_comment": "Origin (0,0) in IR maps to this KiCad canvas point in mm. Only used by the KiCad renderer.",
-    "kicad_origin_x_mm": 100.0,
-    "kicad_origin_y_mm": 100.0
+    "_comment": "Origin (0,0) in IR maps to this KiCad canvas point in mm. Only used by the KiCad renderer. Matches the board-center of the rev1-original sharp-corner outline (X range 67.5026-230.1642, Y range 24.9902-137.6646) so the new filleted outline overlays exactly where the old one sat — no footprints need to move.",
+    "kicad_origin_x_mm": 148.8334,
+    "kicad_origin_y_mm": 81.3274
   }
 }

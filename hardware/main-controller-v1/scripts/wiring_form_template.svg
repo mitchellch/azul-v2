@@ -1,0 +1,485 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="216mm" height="279mm"
+     viewBox="0 0 216 279"
+     font-family="Arial, Helvetica, sans-serif">
+
+  <title>Azul main-controller-v1 wire form fixture template</title>
+  <desc>Diagonal-fanout fixture for J6 (14-pos zone terminal). Portrait Letter. v9 2026-07-16: pegs P1..P14 collinear on single diagonal from P14 (51.5, 156.5) to P1 (94.3, 91.5). P1 lies 0.5" (12.7 mm) west of J6 left edge; horizontal wire runs preserved. PC removed. Dimensions verified against main-controller-v1.kicad_pcb. Print at 100% scale, no auto-fit.</desc>
+
+  <!--
+    Coordinate map (SVG units = mm; viewBox in mm):
+      Diagonal peg line: P14 (51.5, 156.5) ↔ P1 (94.3, 91.5)
+        Total length ~77.83 mm along diagonal · ~6.0 mm center-to-center
+        Direction unit vector (from P14 toward P1): (0.5499, -0.8351)
+        Perpendicular SW offset unit vector (bundle side): (-0.8351, -0.5499)
+
+      Bundle: vertical at X = 50, Y = 175 → 167 (jacketed)
+              vertical at X = 50, Y = 167 → 156.5 (bundled, tangent P14 west)
+              small CW arc r=1.5 around P14 from (50, 156.5) to (50.247, 155.675)
+              diagonal straight line to (93.047, 90.675) — tangent to all pegs' SW
+
+      Fanout: each peg wraps CW from bundle SW-tangent to peg north-tangent
+              (Y = peg_y − 1.5), then horizontal east to J6 pin box (X = 107)
+
+      Peg positions (X, Y) — all on the diagonal:
+        P1  (94.30,  91.5)   P8  (71.25, 126.5)
+        P2  (91.01,  96.5)   P9  (67.96, 131.5)
+        P3  (87.72, 101.5)   P10 (64.67, 136.5)
+        P4  (84.42, 106.5)   P11 (61.38, 141.5)
+        P5  (81.13, 111.5)   P12 (58.08, 146.5)
+        P6  (77.84, 116.5)   P13 (54.79, 151.5)
+        P7  (74.55, 121.5)   P14 (51.50, 156.5)
+
+      J6 pin-box left edge X = 107 · body width 8 mm · pitch 5 mm
+      K1 at top (Y = 90), K14 at bottom (Y = 155)
+
+      Wire horizontal run lengths (from peg north-tangent X to J6 X=107):
+        K1  = 12.7 mm (0.5")   K8  = 35.75 mm
+        K2  = 15.99 mm         K9  = 39.04 mm
+        K3  = 19.28 mm         K10 = 42.33 mm
+        K4  = 22.58 mm         K11 = 45.62 mm
+        K5  = 25.87 mm         K12 = 48.92 mm
+        K6  = 29.16 mm         K13 = 52.21 mm
+        K7  = 32.45 mm         K14 = 55.50 mm
+  -->
+
+  <!-- ================================================================ -->
+  <!-- Title                                                             -->
+  <!-- ================================================================ -->
+  <text x="108" y="10" font-size="4" text-anchor="middle" font-weight="bold">
+    Azul J6 zone harness · form fixture · v10 · 2026-07-16
+  </text>
+  <text x="108" y="15" font-size="2.3" text-anchor="middle">
+    Diagonal pegs, strictly horizontal wire runs, cut line at strip end (6 mm inside J6).
+  </text>
+
+  <!-- ================================================================ -->
+  <!-- Fixture outer boundary                                            -->
+  <!-- ================================================================ -->
+  <rect x="15" y="22" width="185" height="188"
+        fill="none" stroke="black" stroke-width="0.5"/>
+
+  <!-- ================================================================ -->
+  <!-- Bundle path (thick line below jacket cut, thin above)             -->
+  <!-- ================================================================ -->
+  <!-- Below jacket cut (bundled, jacketed cable) -->
+  <line x1="50" y1="175" x2="50" y2="167"
+        stroke="black" stroke-width="1.4"/>
+
+  <!-- Jacket cut tick — moved down to Y=170 to clear the K14 wire-run dim at Y=163-167 -->
+  <line x1="46" y1="170" x2="54" y2="170"
+        stroke="black" stroke-width="0.6"/>
+  <text x="56" y="170.8" font-size="1.9" font-weight="bold">
+    JACKET CUT — strip ~110 mm, expose 14 conductors
+  </text>
+
+  <!-- Above jacket cut, individual conductors bundled — vertical up X=50
+       tangent to P14 west (50, 156.5), small CW arc around P14 to reach
+       the diagonal NW-tangent at (50.247, 155.675), then straight
+       diagonal to P1's NW-tangent at (93.047, 90.675). Each peg's
+       fanout arc peels off from this line at its NW-tangent point. -->
+  <path d="M 50 167
+           L 50 156.5
+           A 1.5 1.5 0 0 1 50.247 155.675
+           L 93.047 90.675"
+        fill="none" stroke="black" stroke-width="0.6"/>
+
+  <!-- ================================================================ -->
+  <!-- Strain relief symbol at bottom                                    -->
+  <!-- ================================================================ -->
+  <rect x="42" y="175" width="16" height="18" rx="4" ry="4"
+        fill="black" stroke="black" stroke-width="0.3"/>
+  <text x="65" y="182" font-size="2" font-weight="bold">
+    Strain relief clamp
+  </text>
+  <text x="65" y="185" font-size="1.7">
+    (jacketed cable enters here)
+  </text>
+  <text x="65" y="188" font-size="1.7">
+    Two nails or wood bar with 9 mm slot
+  </text>
+  <text x="65" y="191" font-size="1.7" font-style="italic">
+    Anchors the Syston 8813 outer jacket
+  </text>
+
+  <!-- ================================================================ -->
+  <!-- Pegs P1..P14 — collinear on a single diagonal from P14 (SW) to    -->
+  <!-- P1 (NE). Bundle is tangent to each peg on its NW quadrant; wire  -->
+  <!-- fillets from NW-tangent CW around peg top to N-tangent, then     -->
+  <!-- exits strictly horizontal east to J6 pin box.                     -->
+  <!-- Each peg is drawn as circle + crosshair + center dot.             -->
+  <!-- ================================================================ -->
+  <g stroke="black" fill="none">
+    <!-- P1  (94.30,  91.5) -->
+    <circle cx="94.30" cy="91.5" r="1.5" stroke-width="0.3"/>
+    <line x1="91.30" y1="91.5" x2="97.30" y2="91.5" stroke-width="0.25"/>
+    <line x1="94.30" y1="88.5" x2="94.30" y2="94.5" stroke-width="0.25"/>
+    <circle cx="94.30" cy="91.5" r="0.25" fill="black"/>
+    <!-- P2  (91.01,  96.5) -->
+    <circle cx="91.01" cy="96.5" r="1.5" stroke-width="0.3"/>
+    <line x1="88.01" y1="96.5" x2="94.01" y2="96.5" stroke-width="0.25"/>
+    <line x1="91.01" y1="93.5" x2="91.01" y2="99.5" stroke-width="0.25"/>
+    <circle cx="91.01" cy="96.5" r="0.25" fill="black"/>
+    <!-- P3  (87.72, 101.5) -->
+    <circle cx="87.72" cy="101.5" r="1.5" stroke-width="0.3"/>
+    <line x1="84.72" y1="101.5" x2="90.72" y2="101.5" stroke-width="0.25"/>
+    <line x1="87.72" y1="98.5" x2="87.72" y2="104.5" stroke-width="0.25"/>
+    <circle cx="87.72" cy="101.5" r="0.25" fill="black"/>
+    <!-- P4  (84.42, 106.5) -->
+    <circle cx="84.42" cy="106.5" r="1.5" stroke-width="0.3"/>
+    <line x1="81.42" y1="106.5" x2="87.42" y2="106.5" stroke-width="0.25"/>
+    <line x1="84.42" y1="103.5" x2="84.42" y2="109.5" stroke-width="0.25"/>
+    <circle cx="84.42" cy="106.5" r="0.25" fill="black"/>
+    <!-- P5  (81.13, 111.5) -->
+    <circle cx="81.13" cy="111.5" r="1.5" stroke-width="0.3"/>
+    <line x1="78.13" y1="111.5" x2="84.13" y2="111.5" stroke-width="0.25"/>
+    <line x1="81.13" y1="108.5" x2="81.13" y2="114.5" stroke-width="0.25"/>
+    <circle cx="81.13" cy="111.5" r="0.25" fill="black"/>
+    <!-- P6  (77.84, 116.5) -->
+    <circle cx="77.84" cy="116.5" r="1.5" stroke-width="0.3"/>
+    <line x1="74.84" y1="116.5" x2="80.84" y2="116.5" stroke-width="0.25"/>
+    <line x1="77.84" y1="113.5" x2="77.84" y2="119.5" stroke-width="0.25"/>
+    <circle cx="77.84" cy="116.5" r="0.25" fill="black"/>
+    <!-- P7  (74.55, 121.5) -->
+    <circle cx="74.55" cy="121.5" r="1.5" stroke-width="0.3"/>
+    <line x1="71.55" y1="121.5" x2="77.55" y2="121.5" stroke-width="0.25"/>
+    <line x1="74.55" y1="118.5" x2="74.55" y2="124.5" stroke-width="0.25"/>
+    <circle cx="74.55" cy="121.5" r="0.25" fill="black"/>
+    <!-- P8  (71.25, 126.5) -->
+    <circle cx="71.25" cy="126.5" r="1.5" stroke-width="0.3"/>
+    <line x1="68.25" y1="126.5" x2="74.25" y2="126.5" stroke-width="0.25"/>
+    <line x1="71.25" y1="123.5" x2="71.25" y2="129.5" stroke-width="0.25"/>
+    <circle cx="71.25" cy="126.5" r="0.25" fill="black"/>
+    <!-- P9  (67.96, 131.5) -->
+    <circle cx="67.96" cy="131.5" r="1.5" stroke-width="0.3"/>
+    <line x1="64.96" y1="131.5" x2="70.96" y2="131.5" stroke-width="0.25"/>
+    <line x1="67.96" y1="128.5" x2="67.96" y2="134.5" stroke-width="0.25"/>
+    <circle cx="67.96" cy="131.5" r="0.25" fill="black"/>
+    <!-- P10 (64.67, 136.5) -->
+    <circle cx="64.67" cy="136.5" r="1.5" stroke-width="0.3"/>
+    <line x1="61.67" y1="136.5" x2="67.67" y2="136.5" stroke-width="0.25"/>
+    <line x1="64.67" y1="133.5" x2="64.67" y2="139.5" stroke-width="0.25"/>
+    <circle cx="64.67" cy="136.5" r="0.25" fill="black"/>
+    <!-- P11 (61.38, 141.5) -->
+    <circle cx="61.38" cy="141.5" r="1.5" stroke-width="0.3"/>
+    <line x1="58.38" y1="141.5" x2="64.38" y2="141.5" stroke-width="0.25"/>
+    <line x1="61.38" y1="138.5" x2="61.38" y2="144.5" stroke-width="0.25"/>
+    <circle cx="61.38" cy="141.5" r="0.25" fill="black"/>
+    <!-- P12 (58.08, 146.5) -->
+    <circle cx="58.08" cy="146.5" r="1.5" stroke-width="0.3"/>
+    <line x1="55.08" y1="146.5" x2="61.08" y2="146.5" stroke-width="0.25"/>
+    <line x1="58.08" y1="143.5" x2="58.08" y2="149.5" stroke-width="0.25"/>
+    <circle cx="58.08" cy="146.5" r="0.25" fill="black"/>
+    <!-- P13 (54.79, 151.5) -->
+    <circle cx="54.79" cy="151.5" r="1.5" stroke-width="0.3"/>
+    <line x1="51.79" y1="151.5" x2="57.79" y2="151.5" stroke-width="0.25"/>
+    <line x1="54.79" y1="148.5" x2="54.79" y2="154.5" stroke-width="0.25"/>
+    <circle cx="54.79" cy="151.5" r="0.25" fill="black"/>
+    <!-- P14 (51.50, 156.5) -->
+    <circle cx="51.50" cy="156.5" r="1.5" stroke-width="0.3"/>
+    <line x1="48.50" y1="156.5" x2="54.50" y2="156.5" stroke-width="0.25"/>
+    <line x1="51.50" y1="153.5" x2="51.50" y2="159.5" stroke-width="0.25"/>
+    <circle cx="51.50" cy="156.5" r="0.25" fill="black"/>
+  </g>
+
+  <!-- ================================================================ -->
+  <!-- Wire fanouts — each wire enters at its peg's NW-tangent (where    -->
+  <!-- the diagonal bundle line touches the peg surface), arcs CW around -->
+  <!-- the peg to the N-tangent (Y = peg_y − 1.5), then runs strictly    -->
+  <!-- horizontal east THROUGH J6 pin box to CUT LINE at X = 113         -->
+  <!-- (6 mm inside J6 body = strip length). Trim each wire at its       -->
+  <!-- exit point on J6 (X = 107); the segment 107→113 shows how much    -->
+  <!-- insulation to strip.                                              -->
+  <!--                                                                    -->
+  <!-- Colors follow the Syston 8813 default fan order (LEFT→RIGHT in    -->
+  <!-- the datasheet photo): teal, white, orange, black, yellow, violet, -->
+  <!-- cyan, black, red, gray, blue, pink, green, brown. White is        -->
+  <!-- rendered light-gray so it prints visibly.                         -->
+  <!-- ================================================================ -->
+  <g stroke-width="0.9" fill="none">
+    <!-- K1: teal   · peg P1 (94.30, 91.5) -->
+    <path d="M 93.047 90.675  A 1.5 1.5 0 0 1 94.30 90    L 113 90"    stroke="#008B8B"/>
+    <!-- K2: white  · peg P2 (91.01, 96.5) -->
+    <path d="M 89.757 95.675  A 1.5 1.5 0 0 1 91.01 95    L 113 95"    stroke="#BFBFBF"/>
+    <!-- K3: orange · peg P3 (87.72, 101.5) -->
+    <path d="M 86.467 100.675 A 1.5 1.5 0 0 1 87.72 100   L 113 100"   stroke="#FF8C00"/>
+    <!-- K4: black  · peg P4 (84.42, 106.5) -->
+    <path d="M 83.167 105.675 A 1.5 1.5 0 0 1 84.42 105   L 113 105"   stroke="#000000"/>
+    <!-- K5: yellow · peg P5 (81.13, 111.5) -->
+    <path d="M 79.877 110.675 A 1.5 1.5 0 0 1 81.13 110   L 113 110"   stroke="#E6C700"/>
+    <!-- K6: violet · peg P6 (77.84, 116.5) -->
+    <path d="M 76.587 115.675 A 1.5 1.5 0 0 1 77.84 115   L 113 115"   stroke="#8A2BE2"/>
+    <!-- K7: cyan   · peg P7 (74.55, 121.5) -->
+    <path d="M 73.297 120.675 A 1.5 1.5 0 0 1 74.55 120   L 113 120"   stroke="#4FB6E6"/>
+    <!-- K8: black  · peg P8 (71.25, 126.5) -->
+    <path d="M 69.997 125.675 A 1.5 1.5 0 0 1 71.25 125   L 113 125"   stroke="#000000"/>
+    <!-- K9: red    · peg P9 (67.96, 131.5) -->
+    <path d="M 66.707 130.675 A 1.5 1.5 0 0 1 67.96 130   L 113 130"   stroke="#DC143C"/>
+    <!-- K10: gray  · peg P10 (64.67, 136.5) -->
+    <path d="M 63.417 135.675 A 1.5 1.5 0 0 1 64.67 135   L 113 135"   stroke="#808080"/>
+    <!-- K11: blue  · peg P11 (61.38, 141.5) -->
+    <path d="M 60.127 140.675 A 1.5 1.5 0 0 1 61.38 140   L 113 140"   stroke="#1E5FCC"/>
+    <!-- K12: pink  · peg P12 (58.08, 146.5) -->
+    <path d="M 56.827 145.675 A 1.5 1.5 0 0 1 58.08 145   L 113 145"   stroke="#F08080"/>
+    <!-- K13: green · peg P13 (54.79, 151.5) -->
+    <path d="M 53.537 150.675 A 1.5 1.5 0 0 1 54.79 150   L 113 150"   stroke="#228B22"/>
+    <!-- K14: brown · peg P14 (51.50, 156.5) -->
+    <path d="M 50.247 155.675 A 1.5 1.5 0 0 1 51.50 155   L 113 155"   stroke="#8B4513"/>
+  </g>
+
+  <!-- ================================================================ -->
+  <!-- CUT LINE + TRIM LINE reference marks across J6                    -->
+  <!-- ================================================================ -->
+  <!-- TRIM LINE at X=107 (J6 west face): where each colored wire enters -->
+  <!-- the terminal. Cut insulation flush here — this is the wire length -->
+  <!-- reported in the run-length dimension. -->
+  <line x1="107" y1="87" x2="107" y2="159"
+        stroke="#B22222" stroke-width="0.35" stroke-dasharray="1.6,0.8"/>
+  <!-- CUT LINE at X=113 (6 mm inside J6): where the copper conductor    -->
+  <!-- ends. Strip insulation from 107 to 113 to expose 6 mm of copper.  -->
+  <line x1="113" y1="87" x2="113" y2="159"
+        stroke="#B22222" stroke-width="0.5" stroke-dasharray="1.2,0.6"/>
+
+  <!-- Strip-length dimension (X=107 → X=113 = 6 mm) above K1 row.
+       Placed higher than the P1-to-J6 dim at Y=80..85 to avoid overlap. -->
+  <g stroke="#B22222" stroke-width="0.2" fill="none">
+    <line x1="107" y1="72" x2="113" y2="72"/>
+    <line x1="107" y1="70" x2="107" y2="74"/>
+    <line x1="113" y1="70" x2="113" y2="74"/>
+  </g>
+  <text x="115" y="72.8" font-size="1.9" fill="#B22222" font-weight="bold">
+    STRIP 6 mm
+  </text>
+
+  <!-- Legend labels for the two dashed reference lines -->
+  <text x="105.7" y="86" font-size="1.7" text-anchor="end" fill="#B22222" font-weight="bold">
+    TRIM (cut insulation)
+  </text>
+  <text x="114.3" y="86" font-size="1.7" fill="#B22222" font-weight="bold">
+    CUT (copper tip)
+  </text>
+
+  <!-- ================================================================ -->
+  <!-- J6 terminal body: 14 stacked pin boxes (5mm pitch)                -->
+  <!-- ================================================================ -->
+  <g stroke="black" stroke-width="0.4" fill="none">
+    <rect x="107" y="87.5"  width="8" height="5"/>
+    <rect x="107" y="92.5"  width="8" height="5"/>
+    <rect x="107" y="97.5"  width="8" height="5"/>
+    <rect x="107" y="102.5" width="8" height="5"/>
+    <rect x="107" y="107.5" width="8" height="5"/>
+    <rect x="107" y="112.5" width="8" height="5"/>
+    <rect x="107" y="117.5" width="8" height="5"/>
+    <rect x="107" y="122.5" width="8" height="5"/>
+    <rect x="107" y="127.5" width="8" height="5"/>
+    <rect x="107" y="132.5" width="8" height="5"/>
+    <rect x="107" y="137.5" width="8" height="5"/>
+    <rect x="107" y="142.5" width="8" height="5"/>
+    <rect x="107" y="147.5" width="8" height="5"/>
+    <rect x="107" y="152.5" width="8" height="5"/>
+  </g>
+
+  <text x="127" y="86" font-size="3" font-weight="bold">J6</text>
+
+  <!-- ================================================================ -->
+  <!-- K1..K14 labels + color chip + color name to the right of J6 body   -->
+  <!-- ================================================================ -->
+  <!-- Color chips (2.5×2.5 mm swatches, centered on each row Y=90..155) -->
+  <g stroke="black" stroke-width="0.15">
+    <rect x="117" y="88.75"  width="2.5" height="2.5" fill="#008B8B"/>
+    <rect x="117" y="93.75"  width="2.5" height="2.5" fill="#BFBFBF"/>
+    <rect x="117" y="98.75"  width="2.5" height="2.5" fill="#FF8C00"/>
+    <rect x="117" y="103.75" width="2.5" height="2.5" fill="#000000"/>
+    <rect x="117" y="108.75" width="2.5" height="2.5" fill="#E6C700"/>
+    <rect x="117" y="113.75" width="2.5" height="2.5" fill="#8A2BE2"/>
+    <rect x="117" y="118.75" width="2.5" height="2.5" fill="#4FB6E6"/>
+    <rect x="117" y="123.75" width="2.5" height="2.5" fill="#000000"/>
+    <rect x="117" y="128.75" width="2.5" height="2.5" fill="#DC143C"/>
+    <rect x="117" y="133.75" width="2.5" height="2.5" fill="#808080"/>
+    <rect x="117" y="138.75" width="2.5" height="2.5" fill="#1E5FCC"/>
+    <rect x="117" y="143.75" width="2.5" height="2.5" fill="#F08080"/>
+    <rect x="117" y="148.75" width="2.5" height="2.5" fill="#228B22"/>
+    <rect x="117" y="153.75" width="2.5" height="2.5" fill="#8B4513"/>
+  </g>
+  <g font-size="2.2" font-weight="bold">
+    <text x="121" y="91"  >K1</text>
+    <text x="121" y="96"  >K2</text>
+    <text x="121" y="101" >K3</text>
+    <text x="121" y="106" >K4</text>
+    <text x="121" y="111" >K5</text>
+    <text x="121" y="116" >K6</text>
+    <text x="121" y="121" >K7</text>
+    <text x="121" y="126" >K8</text>
+    <text x="121" y="131" >K9</text>
+    <text x="121" y="136" >K10</text>
+    <text x="121" y="141" >K11</text>
+    <text x="121" y="146" >K12</text>
+    <text x="121" y="151" >K13</text>
+    <text x="121" y="156" >K14</text>
+  </g>
+  <!-- Color names to the right of K labels -->
+  <g font-size="1.9">
+    <text x="130" y="91"  >teal</text>
+    <text x="130" y="96"  >white</text>
+    <text x="130" y="101" >orange</text>
+    <text x="130" y="106" >black</text>
+    <text x="130" y="111" >yellow</text>
+    <text x="130" y="116" >violet</text>
+    <text x="130" y="121" >cyan</text>
+    <text x="130" y="126" >black</text>
+    <text x="130" y="131" >red</text>
+    <text x="130" y="136" >gray</text>
+    <text x="130" y="141" >blue</text>
+    <text x="130" y="146" >pink</text>
+    <text x="130" y="151" >green</text>
+    <text x="130" y="156" >brown</text>
+  </g>
+
+  <!-- ================================================================ -->
+  <!-- Peg labels — placed SE of each peg (below-and-right), which is the -->
+  <!-- clear quadrant (bundle enters NW, wire exits N then east).         -->
+  <!-- ================================================================ -->
+  <g font-size="1.7">
+    <text x="97.30"  y="93.7"  >P1</text>
+    <text x="94.01"  y="98.7"  >P2</text>
+    <text x="90.72"  y="103.7" >P3</text>
+    <text x="87.42"  y="108.7" >P4</text>
+    <text x="84.13"  y="113.7" >P5</text>
+    <text x="80.84"  y="118.7" >P6</text>
+    <text x="77.55"  y="123.7" >P7</text>
+    <text x="74.25"  y="128.7" >P8</text>
+    <text x="70.96"  y="133.7" >P9</text>
+    <text x="67.67"  y="138.7" >P10</text>
+    <text x="64.38"  y="143.7" >P11</text>
+    <text x="61.08"  y="148.7" >P12</text>
+    <text x="57.79"  y="153.7" >P13</text>
+    <text x="54.50"  y="158.7" >P14</text>
+  </g>
+
+  <!-- ================================================================ -->
+  <!-- Dimension callouts                                                -->
+  <!-- ================================================================ -->
+  <!-- P1 offset from J6 west face: 12.7 mm (0.5") -->
+  <g stroke="#888" stroke-width="0.15" fill="none">
+    <line x1="94.30" y1="83" x2="107" y2="83"/>
+    <line x1="94.30" y1="81" x2="94.30" y2="85"/>
+    <line x1="107" y1="81" x2="107" y2="85"/>
+  </g>
+  <text x="100.65" y="80" font-size="1.9" text-anchor="middle" fill="#666">
+    12.7 mm (0.5") — P1 to J6
+  </text>
+
+  <!-- K14 wire run length (longest): 55.5 mm -->
+  <g stroke="#888" stroke-width="0.15" fill="none">
+    <line x1="51.50" y1="163" x2="107" y2="163"/>
+    <line x1="51.50" y1="161" x2="51.50" y2="165"/>
+    <line x1="107" y1="161" x2="107" y2="165"/>
+  </g>
+  <text x="79.25" y="167" font-size="1.9" text-anchor="middle" fill="#666">
+    55.5 mm (K14 wire run — longest)
+  </text>
+
+  <!-- Diagonal peg span P14 → P1 (center-to-center) -->
+  <g stroke="#888" stroke-width="0.15" fill="none">
+    <line x1="51.50" y1="156.5" x2="94.30" y2="91.5" stroke-dasharray="1.2,0.8"/>
+  </g>
+  <text x="82" y="129" font-size="1.9" fill="#666"
+        transform="rotate(-56.65 82 129)">
+    77.83 mm diagonal · 5 mm vertical pitch
+  </text>
+
+  <!-- Vertical peg pitch span P1 → P14 (65 mm) -->
+  <g stroke="#888" stroke-width="0.15" fill="none">
+    <line x1="34" y1="91.5"  x2="30" y2="91.5"/>
+    <line x1="34" y1="156.5" x2="30" y2="156.5"/>
+    <line x1="32" y1="91.5"  x2="32" y2="156.5"/>
+  </g>
+  <text x="26" y="124" font-size="1.9" text-anchor="middle" fill="#666"
+        transform="rotate(-90 26 124)">
+    65 mm (14 pegs · 5 mm vertical pitch)
+  </text>
+
+  <!-- ================================================================ -->
+  <!-- Build notes                                                       -->
+  <!-- ================================================================ -->
+  <g font-size="2">
+    <text x="140" y="30" font-weight="bold">FIXTURE BUILD NOTES</text>
+    <text x="140" y="34.5">Substrate: 6 mm plywood, ~200 × 220 mm.</text>
+    <text x="140" y="38">Pegs (P1–P14, PC): finishing nails or #4</text>
+    <text x="140" y="41">wood screws, ~10 mm above surface.</text>
+    <text x="140" y="45">Pilot 1–1.5 mm for nails; 2 mm for screws.</text>
+    <text x="140" y="49">Strain relief: 2 nails 8–10 mm apart, or a</text>
+    <text x="140" y="52">wood bar with a 9 mm slot screwed down.</text>
+
+    <text x="140" y="59" font-weight="bold">HARNESS PROCEDURE</text>
+    <text x="140" y="63">1. Clamp cable jacket at strain relief.</text>
+    <text x="140" y="66.5">2. Cut jacket at "JACKET CUT" tick.</text>
+    <text x="140" y="69.5">   Expose all 14 conductors — do not nick.</text>
+    <text x="140" y="73">3. Route bundle up X=50, wrap CW around P14.</text>
+    <text x="140" y="76">4. Follow diagonal P14 → P1, each peg's</text>
+    <text x="140" y="79">   NW quadrant is tangent to the bundle.</text>
+    <text x="140" y="82.5">5. Pull each conductor off at its peg:</text>
+    <text x="140" y="85.5">   wrap CW ~90° from bundle to horizontal.</text>
+    <text x="140" y="89">6. Wire runs strictly east to its K box.</text>
+    <text x="140" y="92.5">7. Trim to reach J6 pin with 5–8 mm slack.</text>
+    <text x="140" y="95.5">   Strip 6 mm, terminate. Torque per spec.</text>
+  </g>
+
+  <!-- ================================================================ -->
+  <!-- J2 pigtail note                                                   -->
+  <!-- ================================================================ -->
+  <rect x="15" y="220" width="185" height="24"
+        fill="none" stroke="black" stroke-width="0.3"/>
+
+  <text x="20" y="226" font-size="2.5" font-weight="bold">
+    J2 (24VAC input, 2-pos)
+  </text>
+  <text x="20" y="230" font-size="1.9">
+    No fixture needed. Pigtail from barrel jack is factory-made 150 mm, 2 conductors.
+  </text>
+  <text x="20" y="233" font-size="1.9">
+    Cut jacket back ~15 mm at the terminal end. Strip each conductor 6 mm. Insert into J2
+  </text>
+  <text x="20" y="236" font-size="1.9">
+    (barrel tip polarity depends on jack — VERIFY with meter before soldering). Then torque.
+  </text>
+  <text x="20" y="241" font-size="1.9" font-style="italic">
+    J2 pin pitch is also 5 mm (MX126-5.0-02P). Body 10.5 × 7.8 mm.
+  </text>
+
+  <!-- ================================================================ -->
+  <!-- Calibration line + print instructions                             -->
+  <!-- ================================================================ -->
+  <text x="15" y="252" font-size="2.8" font-weight="bold">CALIBRATION</text>
+  <text x="15" y="256" font-size="2.1">
+    Verify this 100 mm line with calipers before cutting or drilling.
+  </text>
+  <line x1="15"  y1="262" x2="115" y2="262" stroke="black" stroke-width="0.5"/>
+  <line x1="15"  y1="259" x2="15"  y2="265" stroke="black" stroke-width="0.5"/>
+  <line x1="115" y1="259" x2="115" y2="265" stroke="black" stroke-width="0.5"/>
+  <g stroke="black" stroke-width="0.3">
+    <line x1="25"  y1="261" x2="25"  y2="263"/>
+    <line x1="35"  y1="261" x2="35"  y2="263"/>
+    <line x1="45"  y1="261" x2="45"  y2="263"/>
+    <line x1="55"  y1="260" x2="55"  y2="264"/>
+    <line x1="65"  y1="261" x2="65"  y2="263"/>
+    <line x1="75"  y1="261" x2="75"  y2="263"/>
+    <line x1="85"  y1="261" x2="85"  y2="263"/>
+    <line x1="95"  y1="261" x2="95"  y2="263"/>
+    <line x1="105" y1="261" x2="105" y2="263"/>
+  </g>
+  <text x="15"  y="269" font-size="1.9" text-anchor="middle">0</text>
+  <text x="65"  y="269" font-size="1.9" text-anchor="middle">50</text>
+  <text x="115" y="269" font-size="1.9" text-anchor="middle">100 mm</text>
+
+  <text x="130" y="253" font-size="2" font-weight="bold">PRINT INSTRUCTIONS</text>
+  <text x="130" y="257" font-size="1.9">Letter portrait · 100% scale · no fit-to-page</text>
+  <text x="130" y="260" font-size="1.9">Uncheck all auto-scale options in print dialog.</text>
+  <text x="130" y="263" font-size="1.9">rsvg-convert to PDF for best fidelity.</text>
+
+  <text x="130" y="269" font-size="1.7" fill="#666">
+    Dimensions verified against main-controller-v1.kicad_pcb 2026-07-16.
+  </text>
+
+</svg>
