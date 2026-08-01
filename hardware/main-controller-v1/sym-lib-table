@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "Azul") (type "KiCad") (uri "${KIPRJMOD}/Azul.kicad_sym") (options "") (descr "LCSC-imported symbols via easyeda2kicad"))
+)

@@ -655,12 +655,48 @@
           "label": "Datasheet",
           "name": "Datasheet",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "LCSC Part",
+          "name": "LCSC Part",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Manufacturer",
+          "name": "Manufacturer",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "MPN",
+          "name": "MPN",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "LCSC",
+          "name": "LCSC",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Description",
+          "name": "Description",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "#",
+          "name": "${ITEM_NUMBER}",
+          "show": false
         }
       ],
-      "filter_string": "",
+      "filter_string": "R_",
       "group_symbols": true,
       "include_excluded_from_bom": true,
-      "name": "Default Editing",
+      "name": "",
       "sort_asc": true,
       "sort_field": "Reference"
     },
@@ -705,7 +741,7 @@
         "uuid": "b1003c9b-a76b-4da0-bb38-3ef06d0104bf"
       }
     ],
-    "used_designators": "R_JMP2-4,FID1-3,L1,U1-5,SW1-2,C1-11,K1-12,#PWR1-43,D1-5,#FLG1-4,J1-5,R1-19,F1",
+    "used_designators": "R1-19,J1-5,#FLG1-4,U1-5,SW1-2,C1-11,K1-12,D1-6,#PWR1-43,L1,FID1-3,F1,R_JMP2-4",
     "variants": []
   },
   "sheets": [

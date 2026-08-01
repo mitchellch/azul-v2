@@ -42,6 +42,14 @@ parts:
     fate: smt
     notes: USB-C CC pull-downs (device role, 5.1kΩ 0603)
 
+  - refs: [R_JMP1, R_JMP2, R_JMP3, R_JMP4]
+    value: "0"
+    footprint: "Resistor_SMD:R_1206_3216Metric"
+    lcsc: C17168
+    basic: true
+    fate: smt
+    notes: 0Ω bring-up jumpers on 24VAC_HOT, +VRAW, +5V, +3V3 — remove to break rail for current measurement
+
   # ─── Capacitors — SMT ───────────────────────────────────────────────────
   - refs: [C2, C4, C10, C11]
     value: "100nF"
@@ -77,7 +85,7 @@ parts:
 
   - refs: [C7]
     value: "22uF/25V"
-    footprint: "Capacitor_SMD:CP_Elec_6.3x5.4"
+    footprint: "Capacitor_SMD:CP_Elec_5x5.8"
     lcsc: C178541
     basic: false
     fate: smt
@@ -126,12 +134,12 @@ parts:
     notes: 33V bidirectional TVS on 24VAC input (600W SMBJ33CA)
 
   - refs: [D2]
-    value: "DB107S"
-    footprint: "Diode_SMD:Diode_Bridge_Diotec_SO-DIL-Slim"
-    lcsc: C5377
-    basic: false
+    value: "MB10S"
+    footprint: "Azul:MBS_L4.7-W3.8-P2.40-LS7.0-TL"
+    lcsc: C2488
+    basic: true
     fate: smt
-    notes: bridge rectifier 24VAC → DC bus (Promotional Extended, setup fee waived)
+    notes: bridge rectifier 24VAC → DC bus (MDD MB10S, JLC Basic; symbol+footprint imported from LCSC via easyeda2kicad — DFM-authoritative pinout)
 
   - refs: [D4]
     value: "SS14"
