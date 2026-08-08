@@ -27,7 +27,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(HERE)
-SCH_PATH = os.path.join(PROJECT_DIR, "main-controller-v1.kicad_sch")
+SCH_PATHS = [
+    os.path.join(PROJECT_DIR, "main-controller-v1.kicad_sch"),
+    os.path.join(PROJECT_DIR, "zone-driver.kicad_sch"),
+]
 YAML_PATH = os.path.join(PROJECT_DIR, "parts.yaml")
 
 
@@ -114,8 +117,16 @@ def find_symbol_instances(text):
                     break
         block = text[start:end]
         ref_m = re.search(r'\(property "Reference" "([^"]+)"', block)
-        if ref_m:
-            yield start, end, ref_m.group(1)
+        ref = ref_m.group(1) if ref_m else None
+        # On hierarchical child sheets the top-level Reference is a template
+        # ("R", "U", "Q?") that isn't in parts.yaml. Fall back to the first
+        # per-path annotated reference under (instances ...).
+        if ref and not any(c.isdigit() for c in ref):
+            inst_m = re.search(r'\(reference "([^"]+)"', block)
+            if inst_m:
+                ref = inst_m.group(1)
+        if ref:
+            yield start, end, ref
 
 
 def patch_instance(block, part_info):
@@ -197,41 +208,50 @@ def main():
     ref_map = load_parts_yaml(YAML_PATH)
     print(f"Loaded {len(ref_map)} refs from parts.yaml")
 
-    with open(SCH_PATH) as f:
-        text = f.read()
-
-    instances = list(find_symbol_instances(text))
-    print(f"Found {len(instances)} schematic-level symbol instances")
-
-    # Process from END to START so earlier offsets stay valid as we splice.
-    changes = []
-    for start, end, ref in reversed(instances):
-        # Skip power flags and other synthetic refs.
-        if ref.startswith("#") or not any(c.isdigit() for c in ref):
+    all_changes = []
+    for sch_path in SCH_PATHS:
+        if not os.path.isfile(sch_path):
+            print(f"Skipping (not found): {sch_path}")
             continue
-        if ref not in ref_map:
-            print(f"  {ref}: not in parts.yaml — skipping")
-            continue
-        block = text[start:end]
-        new_block, actions = patch_instance(block, ref_map[ref])
-        if actions:
-            changes.append((ref, actions))
-        if new_block != block:
-            text = text[:start] + new_block + text[end:]
+        print(f"\n--- {os.path.basename(sch_path)} ---")
+        with open(sch_path) as f:
+            text = f.read()
 
-    changes.reverse()
-    print(f"\n=== Changes ({len(changes)} refs touched) ===")
-    for ref, actions in changes:
-        for a in actions:
-            print(f"  {ref}: {a}")
+        instances = list(find_symbol_instances(text))
+        print(f"Found {len(instances)} schematic-level symbol instances")
+
+        # Process from END to START so earlier offsets stay valid as we splice.
+        changes = []
+        for start, end, ref in reversed(instances):
+            # Skip power flags and other synthetic refs.
+            if ref.startswith("#") or not any(c.isdigit() for c in ref):
+                continue
+            if ref not in ref_map:
+                print(f"  {ref}: not in parts.yaml — skipping")
+                continue
+            block = text[start:end]
+            new_block, actions = patch_instance(block, ref_map[ref])
+            if actions:
+                changes.append((ref, actions))
+            if new_block != block:
+                text = text[:start] + new_block + text[end:]
+
+        changes.reverse()
+        print(f"=== Changes in {os.path.basename(sch_path)} ({len(changes)} refs touched) ===")
+        for ref, actions in changes:
+            for a in actions:
+                print(f"  {ref}: {a}")
+        all_changes.extend(changes)
+
+        if args.dry_run:
+            continue
+        with open(sch_path, "w") as f:
+            f.write(text)
+        print(f"Wrote {sch_path}")
 
     if args.dry_run:
-        print("\n(dry-run — no file written)")
-        return
-
-    with open(SCH_PATH, "w") as f:
-        f.write(text)
-    print(f"\nWrote {SCH_PATH}")
+        print("\n(dry-run — no files written)")
+    print(f"\nTotal: {len(all_changes)} refs touched across {len(SCH_PATHS)} sheets")
 
 
 if __name__ == "__main__":

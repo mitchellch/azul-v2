@@ -741,13 +741,61 @@
         "uuid": "b1003c9b-a76b-4da0-bb38-3ef06d0104bf"
       }
     ],
-    "used_designators": "R1-19,J1-5,#FLG1-4,U1-5,SW1-2,C1-11,K1-12,D1-6,#PWR1-43,L1,FID1-3,F1,R_JMP2-4",
+    "used_designators": "#FLG1-4,D1-6,#PWR1-43,J1-5,U1-16,C1-23,SW1-2,K1-12,Q1-12,L1,FID1-3,F1,R1-44,R_JMP1-4",
     "variants": []
   },
   "sheets": [
     [
       "b1003c9b-a76b-4da0-bb38-3ef06d0104bf",
       "Root"
+    ],
+    [
+      "04acde57-d081-416e-b76d-a6436121f396",
+      "zone1"
+    ],
+    [
+      "32676922-eb67-4b41-9fbf-6443b27cd5ff",
+      "zone2"
+    ],
+    [
+      "bf788194-b4da-4b34-8806-553915134614",
+      "zone3"
+    ],
+    [
+      "b4db4ed4-9197-4fc6-a216-a6b60a3cbacc",
+      "zone4"
+    ],
+    [
+      "131fa14c-1f15-49d8-a5d6-47dbbf3ed5d3",
+      "zone5"
+    ],
+    [
+      "70c38eed-8612-4bcb-866d-2f9e345f48f8",
+      "zone6"
+    ],
+    [
+      "ebb1b299-4211-47a9-b5e5-ef45e84e5f19",
+      "zone7"
+    ],
+    [
+      "9875a76c-8512-419b-ad96-b4401f51118d",
+      "zone8"
+    ],
+    [
+      "787879c9-b7c5-4928-9a32-4c5e0299c9fa",
+      "zone9"
+    ],
+    [
+      "ac44cb4d-4356-4b19-880f-b5cc52036b4a",
+      "zone10"
+    ],
+    [
+      "3226accc-f3a9-4994-be55-c48289df3d9f",
+      "zone11"
+    ],
+    [
+      "1b27e7dd-aeff-4f34-9528-472a3b816269",
+      "zone12"
     ]
   ],
   "text_variables": {},

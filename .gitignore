@@ -74,3 +74,12 @@ fp-info-cache
 _autosave-*
 ~*.lck
 .history/
+
+# KiCad export-script intermediates (from apply_lcsc_fields.py, export_jlc_package.sh)
+*.kicad_pcb.pre-*-backup
+*.kicad_sch.pre-*-backup
+DRC-output.rpt
+update-pcb-report.txt
+
+# Local docs / reference-material staging
+docs/azul v1 - Omega/

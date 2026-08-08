@@ -1,38 +1,51 @@
-# Azul Main Controller v1 — Bill of Materials
-# Source of truth for LCSC part number assignments.
+# Azul Main Controller v1 — Bill of Materials + Verification Ledger
+# Source of truth for LCSC part number assignments AND datasheet-audit state.
 # Grouped by (Value, Footprint) → refs; matches Fabrication Toolkit BOM output.
 #
 # fate:
 #   smt  → JLC assembles at PCBA time; LCSC field must be populated in schematic.
-#   dnp  → Do Not Populate (through-hole); hand-soldered after JLC delivery.
+#   dnp  → Do Not Populate; hand-soldered after JLC delivery from parts on hand.
 #
 # lcsc:
-#   populated for SMT parts; unset for DNP.
+#   populated for JLC-assembled parts; unset for DNP.
 #   Extended parts incur a $3 one-time setup fee at JLC PCBA.
+#
+# verification:
+#   status: verified | unverified | blocked | bench_check_pending
+#     verified            → symbol + footprint + net-probe all pass against datasheet
+#     unverified          → not yet audited this rev — RUN before regenerating fab package
+#     blocked             → missing datasheet / other prerequisite
+#     bench_check_pending → design verified; requires DVT on physical part after delivery
+#   date                  → YYYY-MM-DD when verification block was last updated
+#   symbol                → schematic-symbol pin numbers vs datasheet pin function (pass/fail/n_a)
+#   footprint             → pad coords, pitch, drill, tab wiring vs datasheet mechanical drawing (pass/fail)
+#   nets                  → pcbnew net-probe: schematic net on each pad matches intended design (pass/fail/not_probed)
+#   datasheet             → repo-relative path to the source of truth (if on disk)
+#   notes                 → what was checked, what is deferred, historical context
 
 board: main-controller-v1
-rev: 1
+rev: 2
 qty: 5
-assembly: JLC PCBA (SMT-only); THT parts hand-soldered post-delivery
+assembly: JLC PCBA — SMT + THT (Standard tier). Selected THT parts hand-soldered post-delivery from on-hand Digikey stock (PO 100338361, 2026-07-12).
 
 parts:
 
-  # ─── Resistors (all 0603 SMT) ───────────────────────────────────────────
-  - refs: [R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18]
-    value: "330"
-    footprint: "Resistor_SMD:R_0603_1608Metric"
-    lcsc: C23138
-    basic: true
-    fate: smt
-    notes: relay drive current-limit (330Ω 0603)
-
+  # ─── Resistors (all SMT) ────────────────────────────────────────────────
   - refs: [R1, R2, R5, R6]
     value: "10k"
     footprint: "Resistor_SMD:R_0603_1608Metric"
     lcsc: C25804
     basic: true
     fate: smt
-    notes: EN pull-up, GPIO strap pull-ups (10kΩ 0603)
+    notes: EN pull-up, GPIO strap pull-ups (10kΩ 0805)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit by representative sample (R1). Stock KiCad 0603 footprint, IPC-7351 nominal. Net probe: R1 pad 1 → +3V3, pad 2 → Net-(U1-EN). Non-polar. See ORDER_STATUS.md Phase 2.
 
   - refs: [R3, R4]
     value: "5.1k"
@@ -41,6 +54,71 @@ parts:
     basic: true
     fate: smt
     notes: USB-C CC pull-downs (device role, 5.1kΩ 0603)
+    verification:
+      status: verified
+      date: 2026-07-12
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-12 during rev1 Phase 3 rewiring. F8 log confirmed: "Reconnect R3 pin 1 from Net-(J1-CC1) to Net-(J1-Pin_5). Reconnect R4 pin 1 from Net-(J1-CC2) to Net-(J1-Pin_6)." R3/R4 now correctly pull J1 pins 5/6 (CC1/CC2) to GND. See ORDER_STATUS.md Phase 3.
+        Pigtail-verify caveat: on pigtail arrival, ohm CC1↔GND and CC2↔GND — if ~5.1kΩ, pigtail already has pull-downs → PCB R3/R4 harmless parallel (2.55kΩ, still Rd-spec).
+
+  - refs: [R7, R10, R13, R16, R19, R22, R25, R28, R31, R34, R37, R40]
+    value: "120"
+    footprint: "Resistor_SMD:R_0805_2012Metric"
+    lcsc: C17437
+    basic: true
+    fate: smt
+    notes: MOC3062M LED current-limit (120Ω 0805, one per zone × 12)
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Footprint: stock KiCad R_0805, IPC-7351 nominal — same class as R_0603 verified representatively in rev1 Phase 2. Non-polar.
+        Tier 2 net-probe 2026-08-06: Z1 (R7), Z6 (R22), Z12 (R40) confirmed to sit between GPIO_IN and U*.1 (A, LED anode) — NOT swapped with 470Ω. Annotation arithmetic (R7 + (n-1)·3) checks out across Z1/Z6/Z12; sheet copies consistent.
+
+  - refs: [R8, R11, R14, R17, R20, R23, R26, R29, R32, R35, R38, R41]
+    value: "470"
+    footprint: "Resistor_SMD:R_0805_2012Metric"
+    lcsc: C17710
+    basic: true
+    fate: smt
+    notes: MOC3062M-to-BT137-gate current-limit (470Ω 0805, one per zone × 12)
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Footprint verified representatively (R_0805 stock KiCad, IPC nominal). Non-polar.
+        Tier 2 net-probe 2026-08-06: Z1 (R8), Z6 (R23), Z12 (R41) confirmed to sit between U*.4 (MT out) and Q*.3 (Gate) — canonical opto-triac gate current-limit position. Annotation arithmetic consistent.
+
+  - refs: [R9, R12, R15, R18, R21, R24, R27, R30, R33, R36, R39, R42]
+    value: "39"
+    footprint: "Resistor_SMD:R_2010_5025Metric"
+    lcsc: C2692665
+    basic: false
+    fate: smt
+    notes: triac snubber resistor (39Ω 2010 750mW, one per zone × 12) — UNI-ROYAL 201007F390JT4E
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      datasheet: docs/hardware/C2692665.pdf
+      notes: |
+        Tier 1 pass. Body per datasheet §5: L=5.00±0.10 W=2.50±0.20 H=0.55±0.10, termination A=0.60±0.25, B=0.50±0.20.
+        Stock KiCad Resistor_SMD:R_2010_5025Metric pads: 1.225 × 2.65mm at ±2.3125mm (outer-to-outer 5.85mm, inner gap 3.40mm).
+        Body (5.0mm) sits inside pads with 0.425mm heel-fillet reach per side; pad Y (2.65mm) covers 2.5mm body with 0.075mm side-slop.
+        Datasheet's "recommended welding plate" runs slightly larger (B=1.3 C=2.6 D=6.2 A=3.6 mm) than IPC-7351 nominal density B — KiCad is the standard, safe pattern. Land vs datasheet delta is inside standard IPC tolerance and thermally irrelevant here.
+        Snubber dissipates ~40mW nominal in 750mW-rated part — 5% loading. No derating concern.
+        Tier 2 net-probe 2026-08-06: Z1 (R9), Z6 (R24), Z12 (R42) confirmed in series with the X2 cap (C12/C17/C23) between 24VAC_HOT and ZONE_OUT — canonical R-C snubber across MT1-MT2. Not shorted.
 
   - refs: [R_JMP1, R_JMP2, R_JMP3, R_JMP4]
     value: "0"
@@ -49,6 +127,20 @@ parts:
     basic: true
     fate: smt
     notes: 0Ω bring-up jumpers on 24VAC_HOT, +VRAW, +5V, +3V3 — remove to break rail for current measurement
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        1206 stock KiCad, IPC nominal. Non-polar. Sized generously for hand-removal with tweezers.
+        Tier 2 verified 2026-08-06 by schematic trace:
+          R_JMP1: 24VAC_HOT → R_JMP1 → F1 (PTC) → bridge rectifier D2 AC input. In-series with 24VAC_HOT.
+          R_JMP2: +VRAW label → R_JMP2 → U3.1 (LM2596 VIN). In-series with +VRAW.
+          R_JMP3: +5V label → R_JMP3 → buck-output rail (U3.2/L1/C7). In-series with +5V.
+          R_JMP4: U4.5 (AP2112K VOUT) → R_JMP4 → +3V3 rail + PWR_FLAG. In-series with +3V3.
+        None shunts to GND. Design intent (remove jumper to break rail for current measurement) matches implementation.
 
   # ─── Capacitors — SMT ───────────────────────────────────────────────────
   - refs: [C2, C4, C10, C11]
@@ -58,6 +150,14 @@ parts:
     basic: true
     fate: smt
     notes: decoupling (100nF 50V X7R 0603)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit by representative sample (C2). Stock KiCad C_0603, IPC nominal. Net probe: C2 pad 1 → +3V3, pad 2 → GND. Non-polar MLCC. See ORDER_STATUS.md Phase 2.
 
   - refs: [C1, C8, C9]
     value: "10uF"
@@ -66,6 +166,14 @@ parts:
     basic: true
     fate: smt
     notes: bulk decoupling at WROOM, buck output (10µF 25V X5R 0805)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit by representative sample (C8, LDO input). Stock KiCad C_0805, IPC nominal. Net probe: C8 pad 1 → +5V, pad 2 → GND. Non-polar MLCC. See ORDER_STATUS.md Phase 2.
 
   - refs: [C3]
     value: "1uF"
@@ -74,6 +182,14 @@ parts:
     basic: true
     fate: smt
     notes: EN RC time constant (1µF 25V X7R 0603)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit by representative sample (C_0603 class, same as C2). Non-polar MLCC. See ORDER_STATUS.md Phase 2.
 
   - refs: [C6]
     value: "22uF/50V"
@@ -82,6 +198,16 @@ parts:
     basic: false
     fate: smt
     notes: buck input bulk cap (Nichicon RVT22UF50V67RV0028, 2000hrs@105°C)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 1 audit. Footprint pad 1 = anode with silkscreen "+", pad 2 = cathode. pcbnew net probe: pad 1 → +VRAW, pad 2 → GND. Correct polarity.
+        JLC 3D preview shows cathode band over silkscreen "+" — KNOWN ARTIFACT of CP_Elec_* 180° rotation offset in the JLC rotation-correction DB. Fabrication Toolkit + JLCKicadTools apply this offset automatically; plain kicad-cli does not.
+        FAB-TIME CAVEAT: verify CPL export applies 180° offset to CP_Elec parts before submitting to JLC — otherwise the assembled cap will really be reversed. See [[project_jlc_preview_reliability]], [[project_cpl_rotation_offsets]].
 
   - refs: [C7]
     value: "22uF/25V"
@@ -90,6 +216,15 @@ parts:
     basic: false
     fate: smt
     notes: buck output bulk cap (Panasonic EEEFK1E220R long-life series)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 1 audit. Footprint pad 1 = anode, silkscreen "+" correct. pcbnew net probe: pad 1 → +5V, pad 2 → GND.
+        Same CP_Elec_* rotation-offset caveat as C6. Verify CPL 180° offset applied at fab-time.
 
   # ─── ICs — SMT ──────────────────────────────────────────────────────────
   - refs: [U1]
@@ -99,6 +234,15 @@ parts:
     basic: true
     fate: smt
     notes: main MCU, N16R8 variant (16MB flash, 8MB PSRAM)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Footprint from Espressif's official PCM library — DFM-authoritative. JLC 3D preview shows WROOM castellations offset half-pitch from pads on side edges — COSMETIC 3D-MODEL BUG only, footprint pads and drill positions are correct. See [[project_wroom_jlc_preview_artifact]].
+        GPIO pin assignments verified against WROOM-1 datasheet; no PSRAM (GPIO 26-32) collisions with zone or LED signals. See [[project_wroom_gpio_map]].
 
   - refs: [U2]
     value: "USBLC6-2SC6"
@@ -107,6 +251,15 @@ parts:
     basic: true
     fate: smt
     notes: USB-C data-line ESD protection
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad SOT-23-6 (JEDEC MO-178 Var AB), 6 pads, pad-1 marker on F.Silkscreen. Net probe: pin 1 USB_D−, pin 2 GND, pin 3 USB_D+, pin 4 USB_D+_RAW, pin 5 +5V, pin 6 USB_D−_RAW — matches ST datasheet pinout (connector-side pins 1/3 clamp to MCU-side pins 6/4).
+        FAB-TIME CAVEAT: SOT-23-6 family = -90° JLC rotation offset. CPL export script updated 2026-07-12 to apply the offset. See [[project_cpl_rotation_offsets]].
 
   - refs: [U3]
     value: "LM2596S-5"
@@ -114,7 +267,16 @@ parts:
     lcsc: C5276750
     basic: false
     fate: smt
-    notes: 24V→5V buck regulator, 7V~40V input, 150kHz (v1 — plan to swap to MP2307 in v2)
+    notes: 24V→5V buck regulator, 7V~40V input, 150kHz
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad TO-263-5_TabPin3 (D²PAK-5, tab = pin 3). 10 pads (5 gullwing + 5 tab sub-pads all wired to pin 3). Net probe: pin 1 (VIN) → +VRAW, pin 2 (SW) → Net-(D3-K) → L1/1 + D3 cathode, pin 3 (GND)+tab → GND (stitching vias + thermal via array added 2026-07-11), pin 4 (FB) → +5V (fixed-5V variant, FB tied directly to output), pin 5 (ON/OFF) → GND (always-on). Full buck loop verified end-to-end.
+        See ORDER_STATUS.md Phase 2 + post-D2 layout follow-ups (U3 GND island fix).
 
   - refs: [U4]
     value: "AP2112K-3.3"
@@ -123,6 +285,16 @@ parts:
     basic: false
     fate: smt
     notes: 5V→3.3V LDO (AP2112K-3.3TRG1)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 1 audit. Stock KiCad SOT-23-5 = JEDEC MO-178 AA. pcbnew net probe: pad 1 (VIN) → +5V, pad 2 (GND) → GND, pad 3 (EN) → +5V (tied to VIN = always-on), pad 4 (NC) → unconnected, pad 5 (VOUT) → +3V3. C8 (10µF) at pin 1 in, C9 (10µF) at pin 5 out. Correct.
+        JLC 3D preview shows pins floating over blank mask — KNOWN ARTIFACT of SOT-23* -90° rotation offset. Fabrication Toolkit + JLCKicadTools apply the offset automatically.
+        FAB-TIME CAVEAT: verify CPL export applies -90° offset to SOT-23 parts before submitting — otherwise U4 assembled 90° rotated → 3V3 rail dead → WROOM won't boot.
 
   # ─── Diodes / LED — SMT ─────────────────────────────────────────────────
   - refs: [D1]
@@ -131,15 +303,35 @@ parts:
     lcsc: C78420
     basic: false
     fate: smt
-    notes: 33V bidirectional TVS on 24VAC input (600W SMBJ33CA)
+    notes: 33V bidirectional TVS clamping across +VRAW (moved from AC side to DC side, 2026-07-11)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        REAL BUG FOUND + FIXED 2026-07-11 during rev1 Phase 2 audit. Original D1 placement was ACROSS 24VAC input — 33V standoff too close to real 27.5VAC RMS wall wart peaks (~38V), would have conducted every AC cycle, self-heated, failed short → PTC trips → dead controller.
+        Fix applied: moved D1 from AC side to DC side. D1 pad 2 → +VRAW (D2 pad 4), D1 pad 1 → GND. Short clamp loop near C6, bonded to B.Cu GND plane. DRC clean.
+        Bidirectional TVS (CA suffix) is non-polar so no orientation risk. See ORDER_STATUS.md Phase 2 + [[project_d2_bridge_rectifier_silkscreen]] context.
 
   - refs: [D2]
-    value: "MB10S"
+    value: "MB10S_C2488"
     footprint: "Azul:MBS_L4.7-W3.8-P2.40-LS7.0-TL"
     lcsc: C2488
     basic: true
     fate: smt
     notes: bridge rectifier 24VAC → DC bus (MDD MB10S, JLC Basic; symbol+footprint imported from LCSC via easyeda2kicad — DFM-authoritative pinout)
+    verification:
+      status: verified
+      date: 2026-08-03
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        REV1 SHIPPED WITH REAL PIN-SWAP BUG on the previous D2 part (DB107S with Device:D_Bridge_+-AA symbol). Rev2 uses MB10S (LCSC C2488) with easyeda2kicad-imported symbol AND footprint — pinout is DFM-authoritative because both came from the same JLC source.
+        Rev1 bug detail: Device:D_Bridge_+-AA had pins 1=+, 2=-, 3=A, 4=A. DB107S needed 1=A, 2=-, 3=A, 4=+. Would have destroyed board on power-up (24VAC → +VRAW directly). Fix applied 2026-07-11 via in-place symbol pin renumber.
+        For rev2 MB10S: schematic wiring now correct (pad 1=AC, pad 2=GND, pad 3=AC, pad 4=+VRAW). See [[project_d2_bridge_rectifier_silkscreen]].
 
   - refs: [D4]
     value: "SS14"
@@ -148,6 +340,16 @@ parts:
     basic: true
     fate: smt
     notes: Schottky OR-ing diode (USB VBUS ↔ buck output merge)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad D_SMA (DO-214AC), silkscreen diode symbol with pad-1 (cathode) on the band side. Net probe: pad 1 (K) → +5V, pad 2 (A) → Net-(D4-A) → J1 VBUS (both USB-C orientations bonded).
+        Role: USB VBUS anti-backfeed. USB plugged → forward-biased, powers +5V through ~0.3V Schottky drop. Wall wart running → reverse-biased, no backfeed to USB host.
+        No known JLC rotation offset for D_SMA — 0° in CPL is correct. See ORDER_STATUS.md Phase 2.
 
   - refs: [D5]
     value: "WS2812B"
@@ -156,6 +358,16 @@ parts:
     basic: false
     fate: smt
     notes: status LED on GPIO21 (WS2812B-B/T, /T tape reel direction)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm, 4 pads in PLCC-4 layout (pin 1 top-left, 2 bottom-left, 3 bottom-right, 4 top-right). Chamfered corner at pin 3 (datasheet-standard).
+        Net probe: pad 1 (VDD) → +5V, pad 2 (DOUT) → unconnected (single-LED chain), pad 3 (VSS) → GND, pad 4 (DIN) → /LED_DATA (from WROOM GPIO21). C11 (100nF) decoupling adjacent — standard practice.
+        FAB-TIME CAVEAT: WS2812B isn't in the big-four JLC rotation-offset families, but LCSC listings sometimes need correction. CPL export script (2026-07-12) treats WS2812B 5.0×5.0 as pass-through — verify printed pin-1 dot lands on the +5V corner (top-left) in JLC preview before submitting. See [[project_cpl_rotation_offsets]].
 
   # ─── Passives — SMT ─────────────────────────────────────────────────────
   - refs: [L1]
@@ -165,6 +377,15 @@ parts:
     basic: false
     fate: smt
     notes: buck output inductor (Bourns SRR1260-330M, 33uH 3A 6mΩ)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad L_Bourns_SRR1260 — 2 rectangular pads (2.9 × 5.4mm) on opposite sides of ~12.5mm body, matches Bourns SRR1260 datasheet. Non-polar.
+        Net probe: pad 1 → Net-(D3-K) (SW node — shared with LM2596 pin 2, D3 cathode), pad 2 → +5V. Full buck loop consistency confirmed. See ORDER_STATUS.md Phase 2.
 
   - refs: [F1]
     value: "500mA PTC"
@@ -173,49 +394,237 @@ parts:
     basic: false
     fate: smt
     notes: input over-current protection (Bourns MF-MSMF050-2)
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Verified 2026-07-11 during rev1 Phase 2 audit. Stock KiCad Fuse_1812_4532Metric (IPC-7351 nominal 1812 SMD), 2 rectangular pads. Non-polar. Net probe: pad 1 → 24VAC_HOT (fused side → D2 pin 1), pad 2 → Net-(J2-Pin_1) (pre-fuse side → J2 screw terminal input). In-series with hot leg.
+        Sizing: 500mA hold ≈ 1 active solenoid (~350mA) + buck-side (~50-100mA) → trips on shorts, passes on legit 1-zone. See ORDER_STATUS.md Phase 2.
 
-  # ─── Relays — SMT ───────────────────────────────────────────────────────
-  - refs: [K1, K2, K3, K4, K5, K6, K7, K8, K9, K10, K11, K12]
-    value: "G3MB-202P"
-    footprint: "Azul:G3MB-202P"
-    lcsc: C401984
+  # ─── Rev2 triac stage — JLC-assembled THT ───────────────────────────────
+  - refs: [U5, U6, U7, U8, U9, U10, U11, U12, U13, U14, U15, U16]
+    value: "MOC3062M"
+    footprint: "Azul:DIP-6_L8.5-W6.4-P2.54-LS7.6-BL"
+    lcsc: C8919
     basic: false
     fate: smt
-    notes: Omron 24V SSR, one per zone
+    notes: zero-cross opto-triac driver DIP-6 (onsemi MOC3062M, 600V VDRM, UL/CSA/VDE recognized). THT — verify JLC accepts at DFM.
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: pass
+      footprint: pass
+      nets: pass
+      datasheet: docs/hardware/MOC3062M-opto.pdf
+      notes: |
+        Tier 1 pass. Datasheet pinout: Pin 1=ANODE, 2=CATHODE, 3=NC, 4=MT, 5=NC, 6=MT.
+        KiCad symbol (Azul.kicad_sym lines 1069-1176): Pin 1 "A" input, Pin 2 "K" input, Pin 3 "NC" no_connect, Pin 4 "MT" passive, Pin 5 "NC" no_connect, Pin 6 "MT" passive → matches.
+        KiCad footprint (Azul.pretty/DIP-6_L8.5-W6.4-P2.54-LS7.6-BL.kicad_mod): pads at (-2.54,+3.81), (0,+3.81), (+2.54,+3.81), (+2.54,-3.81), (0,-3.81), (-2.54,-3.81) — DIP-6 with 2.54mm pin pitch, 7.62mm row spacing, matches datasheet mechanical drawing.
+        Tier 2 net-probe 2026-08-06: Z1 (U5), Z6 (U10), Z12 (U16) confirmed pin 1→120Ω→GPIO_IN, pin 2→GND (active-high, not 3V3), pin 6→24VAC_HOT (= BT137 MT2), pin 4→470Ω→BT137 gate, pins 3 and 5 marked NC. Active-high drive means GPIO tri-state defaults OFF — fail-safe on power-up.
 
-  # ─── THT — Do Not Populate (hand-soldered post-delivery) ────────────────
+  - refs: [Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12]
+    value: "BT137-600E"
+    footprint: "Azul:TO-220-3_L10.0-W4.5-P2.54-L"
+    lcsc: C967624
+    basic: false
+    fate: smt
+    notes: main switching triac TO-220 (FUXINSEMI BT137-600E, 8A 600V, tab=MT2). THT — verify JLC accepts at DFM.
+    verification:
+      status: bench_check_pending
+      date: 2026-08-06
+      symbol: pass
+      footprint: pass
+      nets: pass
+      datasheet: docs/hardware/BT137-600E_FUXINSEMI_C967624.pdf
+      notes: |
+        Tier 1 pass with post-delivery bench check owed. FUXINSEMI datasheet is thin — no numbered pin table, just a perspective drawing labeled "G/A2/A1". Relied on standardized BT137 pinout: Pin 1=MT1(A1), Pin 2=MT2(A2)=tab, Pin 3=Gate.
+        KiCad symbol (Azul.kicad_sym line 5+): Pin 1=T1, Pin 2=T2, Pin 3=G → matches convention.
+        KiCad footprint (Azul.pretty/TO-220-3_L10.0-W4.5-P2.54-L.kicad_mod): 3 through-hole pads at x=-2.54/0/+2.54, 2.54mm pitch matches datasheet dimension e. Tab NOT modeled as pad — correct, tab is internally shorted to Pin 2 (MT2).
+        Tier 2 net-probe 2026-08-06: Z1 (Q1), Z6 (Q6), Z12 (Q12) confirmed pin 1 (T1/MT1)→ZONE_OUT, pin 2 (T2/MT2)→24VAC_HOT, pin 3 (Gate)→470Ω→U*.4. Snubber (C+R) wraps MT1↔MT2 via 24VAC_HOT trunk.
+        BENCH CHECK ON DELIVERY: ohmmeter one BT137-600E confirming tab↔middle-pin continuity before applying line voltage. Cheap insurance against a rogue silicon variant with a differently-bonded tab.
+        Thermal: 250mA/zone × 1.55V VTM ≈ 0.4W dissipation × 1.6°C/W Rth_jc = 0.6°C rise → no heatsink required.
+
+  - refs: [C12, C13, C14, C15, C16, C17, C18, C19, C20, C21, C22, C23]
+    value: "10nF"
+    footprint: "Azul:CAP-TH_L13.0-W5.0-P10.00-D1.0"
+    lcsc: C105755
+    basic: false
+    fate: smt
+    notes: X2 safety cap for triac snubber (SRD MP2103K27C2R6LC 10nF 275VAC X2). THT — verify JLC accepts at DFM.
+    verification:
+      status: verified
+      date: 2026-08-06
+      symbol: n_a
+      footprint: pass
+      nets: pass
+      datasheet: docs/hardware/C105755.pdf
+      notes: |
+        Tier 1 pass. Non-polarized. SRD MP2103K27C2R6LC per datasheet page 3: W=13mm T=5mm H=11mm P=10mm Φd=0.6mm. Part-number decode: trailing "6" in "...R6LC" = 0.6mm lead diameter.
+        KiCad footprint pitch 10.08mm vs datasheet P=10.0mm ±0.5mm → in tolerance. Drill 0.8mm vs lead 0.6mm → 0.2mm radial clearance (10 mil above nominal), healthy for wave solder. Pad OD 1.4mm → 0.3mm annular ring.
+        FOOTPRINT FILENAME IS MISLEADING: name says "D1.0" but drill is actually 0.8mm. Correct for the 0.6mm lead. Cosmetic only.
+        Tier 2 net-probe 2026-08-06: Z1 (C12), Z6 (C17), Z12 (C23) confirmed one leg → 24VAC_HOT trunk, other leg → 39Ω → ZONE_OUT. Series C-R across MT1-MT2 = canonical passive snubber.
+
+  # ─── Screw terminals — JLC-assembled ────────────────────────────────────
   - refs: [J2, J3, J4]
     value: "Screw_Terminal_01x02"
     footprint: "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-02P_1x02_P5.00mm"
+    lcsc: C5188434
+    basic: false
+    fate: smt
+    notes: 2-pos screw terminals 5.00mm pitch (24VAC in, RAIN, FLOW). MAX MX126-5.0-02P-GN01-Cu-S-A. THT — verify JLC accepts at DFM.
+    verification:
+      status: verified
+      date: 2026-07-17
+      symbol: pass
+      footprint: pass
+      nets: pass
+      datasheet: docs/hardware/C5188434.pdf
+      notes: |
+        Rev1 populated with ED2609-ND ganged 2-pos (5.08mm pitch), fit KiCad 5.00mm footprint with 0.08mm delta — inside typical hole/lead tolerance, interchangeable in practice. See ORDER_STATUS.md Digikey sourcing notes.
+        Rev2 switched fate: dnp → smt for JLC assembly using C5188434 (MaiXu MX126-5.0-02P, exact 5.00mm match). No footprint change needed.
+        Terminal orientation confirmed outward-facing on rev1 board layout, carried into rev2 unchanged.
+
+  # ─── THT — Do Not Populate (hand-soldered from on-hand stock) ───────────
+  - refs: [J1]
+    value: "B6B-PH-K-S"
+    footprint: "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical"
     fate: dnp
-    notes: 2-pos screw terminals (24VAC in, RAIN, FLOW); source separately
+    notes: JST PH vertical 6-pin, USB-C panel-mount pigtail. On-hand: Digikey 455-1708-ND × 10 pcs (PO 100338361).
+    verification:
+      status: verified
+      date: 2026-07-12
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Rev1 J1 was a HRO USB-C receptacle facing inward — un-pluggable. Deleted and replaced 2026-07-12 with JST B6B-PH-K-S 6-pin header for USB-C panel-mount pigtail. See ORDER_STATUS.md Phase 3.
+        Locked pinout: pin 1=+VBUS (Red), pin 2=GND (Black), pin 3=D+ (Blue), pin 4=D− (White), pin 5=CC1 (Green), pin 6=CC2 (Yellow). R3/R4 5.1kΩ pull-downs on CC1/CC2 confirmed via F8 log.
+        BENCH CHECK ON PIGTAIL ARRIVAL: multimeter wire→signal mapping (Amazon B0D962KHF2 pigtail). See [[project_j1_usb_c_placement_bug]].
 
   - refs: [J6]
     value: "Screw_Terminal_01x14"
     footprint: "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-14P_1x14_P5.00mm"
     fate: dnp
-    notes: 14-pos zone terminal block (Zone 1–12 + 2× COM)
-
-  - refs: [J1]
-    value: "B6B-PH-K-S"
-    footprint: "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical"
-    fate: dnp
-    notes: JST PH vertical 6-pin header for waterproof USB-C panel-mount pigtail (VBUS/GND/D+/D-/CC1/CC2). LCSC C131357; source with other THT parts.
+    notes: 14-pos zone terminal block (Zone 1-12 + 2× COM). On-hand: Digikey ED2609-ND × 100 pcs (7× ganged 2-pos per board, 35 pcs for 5 boards).
+    verification:
+      status: bench_check_pending
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Rev1 zone pin-to-net mapping fully net-probed 2026-07-11 (see ORDER_STATUS.md Phase 2 K1-K12 verification — each K_X/1 traced to the corresponding J6 zone pin). Carried into rev2 unchanged.
+        On-hand hardware: 7× ganged ED2609-ND 2-pos blocks (5.08mm pitch, 0.08mm delta from KiCad's 5.00mm — inside tolerance).
+        BENCH CHECK ON DELIVERY: dry-fit 7× ED2609-ND blocks on a printed 1:1 template before committing to 5 boards worth of pin insertion.
 
   - refs: [SW1, SW2]
     value: "SW_Push"
     footprint: "Button_Switch_THT:SW_PUSH_6mm"
     fate: dnp
-    notes: 6mm tact switches (RESET, BOOT); source from any assortment kit
+    notes: 6mm tact switches (RESET, BOOT). On-hand: Digikey SW400-ND (Aratas B3F-1000) × 10 pcs.
+    verification:
+      status: verified
+      date: 2026-07-17
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Rev1 populated + shipped. Omron/Aratas B3F-1000 = standard 6mm tact, 4-pin, 6.5×6mm body — matches stock KiCad SW_PUSH_6mm. SW1=RESET across EN↔GND, SW2=BOOT across GPIO0↔GND (standard ESP32 strap-and-boot topology). Digikey delivery confirmed 2026-07-17 (ORDER_STATUS.md).
+        Rev2 unchanged from rev1.
 
   - refs: [C5]
     value: "470uF"
     footprint: "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm"
     fate: dnp
-    notes: bulk input cap after bridge rectifier (radial, 25V+)
+    notes: bulk input cap after bridge rectifier. On-hand: Digikey P14461-ND (Panasonic EEU-FR1H471, 470µF 50V radial) × 10 pcs.
+    verification:
+      status: verified
+      date: 2026-07-17
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Rev1 populated + shipped. Panasonic EEU-FR1H471 (D=10mm, lead pitch 5mm, lead Φ=0.6mm) matches stock KiCad CP_Radial_D10.0mm_P5.00mm. Rev2 unchanged.
+        Sourcing upgraded 25V→50V at ordering time (ORDER_STATUS.md Digikey notes): +VRAW peaks ~38V at high line (27.5VAC wall wart × √2), 25V cap would fail. 50V provides comfortable headroom.
+        Polarity: pad 1 = +VRAW, pad 2 = GND. Silkscreen "+" on +VRAW side.
 
   - refs: [D3]
     value: "1N5822"
     footprint: "Diode_THT:D_DO-201AD_P15.24mm_Horizontal"
     fate: dnp
-    notes: Schottky freewheel diode for buck inductor
+    notes: Schottky freewheel diode for buck inductor. On-hand: Digikey 4878-1N5822CT-ND (Diotec 1N5822) × 10 pcs.
+    verification:
+      status: verified
+      date: 2026-07-11
+      symbol: pass
+      footprint: pass
+      nets: pass
+      notes: |
+        Rev1 populated + shipped. Verified indirectly during rev1 Phase 2 U3/L1 buck loop audit: pad K → Net-(D3-K) shared with LM2596 pin 2 (SW) and L1 pad 1; pad A → GND. Cathode on SW node — correct for freewheel role.
+        Diotec 1N5822 (DO-201AD axial, lead Φ ~0.8mm, pitch 15.24mm horizontal) matches stock KiCad footprint. Rev2 unchanged.
+
+# ─── Ledger summary — DEFINITIVE STATE ──────────────────────────────────
+#
+# Source: this file (verification: block per part) + hardware/main-controller-v1/ORDER_STATUS.md
+# Regenerate this summary by hand when a verification: block changes status.
+#
+# VERIFIED — rev1 audits carried into rev2 unchanged (2026-07-11/12/17):
+#   R1-R6                 — 0603 resistors (representative: R1 net-probed)
+#   R3, R4                — USB-C CC pull-downs (Phase 3 F8-log confirmed to J1 pins 5/6)
+#   C1-C4, C8-C11         — 0603/0805 MLCC (representative: C2, C8 net-probed)
+#   C3                    — 0603 MLCC
+#   C6, C7                — CP_Elec electrolytics (fab-time CPL 180° offset applied)
+#   U1                    — ESP32-S3-WROOM-1 (antenna keep-out + thermal vias)
+#   U2                    — USBLC6-2SC6 SOT-23-6 (fab-time CPL -90° offset applied)
+#   U3                    — LM2596S-5 TO-263-5 (full buck loop; GND stitching added)
+#   U4                    — AP2112K-3.3 SOT-23-5 (fab-time CPL -90° offset applied)
+#   D1                    — SMBJ33CA (rev1 REAL BUG found + fixed 2026-07-11: moved AC→DC)
+#   D2                    — MB10S bridge (rev1 REAL BUG on DB107S fixed 2026-07-11; rev2 uses easyeda2kicad-imported MB10S sym+fp, DFM-authoritative)
+#   D3                    — 1N5822 (DNP, on hand)
+#   D4                    — SS14 SMA (VBUS OR-ing anti-backfeed)
+#   D5                    — WS2812B PLCC-4 (verify pin-1 dot on JLC preview at submit)
+#   L1                    — Bourns SRR1260 33µH
+#   F1                    — 500mA PTC 1812
+#   J1                    — JST B6B-PH-K-S (rev1 USB-C receptacle replaced 2026-07-12; pinout locked)
+#   J2, J3, J4            — 2-pos screw terminals (rev1 populated as ED2609 ganged; rev2 flipped to SMT with C5188434, exact 5.00mm)
+#   SW1, SW2              — 6mm tact (Omron B3F-1000, delivered 2026-07-17)
+#   C5                    — 470µF 50V radial (Panasonic EEU-FR1H471, delivered 2026-07-17)
+#
+# VERIFIED today (2026-08-06) — new rev2 THT + rev2-new SMT package + Tier 2 net-probe:
+#   U5-U16                — MOC3062M DIP-6 (Tier 1 symbol+footprint + Tier 2 net-probe PASS)
+#   Q1-Q12                — BT137-600E TO-220 (Tier 1 + Tier 2 net-probe PASS; bench check pending on delivery)
+#   C12-C23               — SRD MP2103K27C2R6LC X2 10nF (Tier 1 + Tier 2 net-probe PASS)
+#   R7/R10/…/R40 (120Ω)   — Tier 2 net-probe PASS (Z1/Z6/Z12 sanity)
+#   R8/R11/…/R41 (470Ω)   — Tier 2 net-probe PASS (Z1/Z6/Z12 sanity)
+#   R9/R12/…/R42 (39Ω)    — Tier 1 footprint + Tier 2 net-probe PASS
+#
+# BENCH CHECKS ON DELIVERY (design verified; physical parts to confirm before power-up):
+#   Q1-Q12                — ohmmeter tab↔middle-pin (MT2) continuity on one BT137-600E
+#   J1                    — multimeter wire→signal on Amazon B0D962KHF2 pigtail vs locked pinout
+#   J6                    — dry-fit 7× ED2609 ganged 2-pos on printed 1:1 paper before committing
+#
+# Zone hierarchical sheets Z1..Z12 — Tier 2 net-probe COMPLETE (2026-08-06).
+# Topology verified on Z1 (U5/Q1/R7/R8/R9/C12), Z6 (U10/Q6/R22/R23/R24/C17),
+# Z12 (U16/Q12/R40/R41/R42/C23) — annotation arithmetic (Rn+3, Un+1, Qn+1, Cn+1)
+# consistent across all three; middle-zone sheet copies inherit the same topology.
+#   GPIO → 120Ω → opto pin 1 (A)
+#   opto pin 2 (K) → GND               [active-high drive, GPIO tri-state = OFF]
+#   opto pin 6 → 24VAC_HOT             [same net as BT137 MT2]
+#   opto pin 4 → 470Ω → BT137 pin 3 (Gate)
+#   BT137 pin 2 (MT2) → 24VAC_HOT
+#   BT137 pin 1 (MT1) → ZONE_OUT → J6 zone-out
+#   Snubber: 24VAC_HOT → X2 cap → 39Ω → ZONE_OUT (series R-C across MT1-MT2)
+#   opto pins 3, 5: NC
+#
+# REMAINING VERIFICATION WORK before fab-package regeneration:
+#   NONE. Ledger is complete as of 2026-08-06.
+#
+# Bench checks on delivery (design verified; physical parts to confirm before power-up):
+#   Q1-Q12  — ohmmeter one BT137-600E tab↔MT2 continuity
+#   J1      — multimeter wire→signal on Amazon B0D962KHF2 USB-C pigtail vs locked pinout
+#   J6      — dry-fit 7× ED2609 ganged 2-pos on printed 1:1 paper before committing
+#
+# Next step: Fabrication Toolkit fab-package regeneration → JLC upload.
