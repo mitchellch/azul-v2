@@ -6,6 +6,7 @@ type Device = {
   id: string; mac: string; name: string;
   firmware: string | null; online: boolean; lastSeenAt: string | null;
   hasActiveSchedule?: boolean; activeScheduleUuid?: string | null;
+  scheduleCount?: number;
 };
 
 type ConnectionGrade = 'good' | 'degraded' | 'poor' | 'offline';
@@ -177,17 +178,41 @@ export default function DashboardPage() {
                   </div>
                 </Link>
                 <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                  {d.firmware && <span className="text-xs text-gray-400 hidden sm:inline">{d.firmware}</span>}
+                  {(() => {
+                    const count = d.scheduleCount ?? 0;
+                    if (count === 0) {
+                      return (
+                        <Link
+                          href={`/controllers/${d.mac}?tab=schedules`}
+                          onClick={e => e.stopPropagation()}
+                          className="text-xs text-[#1a56db] hover:underline hidden sm:inline"
+                        >
+                          Create a schedule to enable →
+                        </Link>
+                      );
+                    }
+                    return (
+                      <span className="text-xs text-gray-400 hidden sm:inline">
+                        {count} schedule{count === 1 ? '' : 's'}
+                      </span>
+                    );
+                  })()}
                   {togglingMac === d.mac ? (
                     <div className="w-5 h-5 border-2 border-[#1a56db] border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSchedule(d); }}
-                      disabled={isOffline}
+                      disabled={isOffline || (d.scheduleCount ?? 0) === 0}
                       className={`relative w-11 h-6 rounded-full transition-colors ${
                         d.hasActiveSchedule ? 'bg-[#1a56db]' : 'bg-gray-300'
-                      } ${isOffline ? 'opacity-35 cursor-default' : 'cursor-pointer'}`}
-                      title={d.hasActiveSchedule ? 'Schedule active — click to pause' : 'Schedule paused — click to resume'}
+                      } ${isOffline || (d.scheduleCount ?? 0) === 0 ? 'opacity-35 cursor-default' : 'cursor-pointer'}`}
+                      title={
+                        (d.scheduleCount ?? 0) === 0
+                          ? 'No schedules — create one to enable'
+                          : d.hasActiveSchedule
+                            ? 'Schedule active — click to pause'
+                            : 'Schedule paused — click to resume'
+                      }
                     >
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
                         d.hasActiveSchedule ? 'translate-x-5' : 'translate-x-0'

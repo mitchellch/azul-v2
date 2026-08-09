@@ -4,7 +4,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
+    "reverse": "adb -d reverse tcp:8081 tcp:8081 && adb -d reverse tcp:3000 tcp:3000",
+    "android": "npm run reverse && expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web"
   },

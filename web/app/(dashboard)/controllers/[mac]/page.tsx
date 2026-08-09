@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
 import { ProgramEditor, Program, expandPrograms, DAY_NAMES, DAY_BITS, formatTime } from '@/components/ProgramEditor';
 import { WeekGlance } from '@/components/WeekGlance';
@@ -86,8 +86,15 @@ export default function ControllerPage() {
   const { mac: rawMac } = useParams<{ mac: string }>();
   const mac = decodeURIComponent(rawMac as string);
   const router  = useRouter();
+  const search  = useSearchParams();
 
-  const [tab, setTab]             = useState<Tab>('Zones');
+  const initialTab: Tab = (() => {
+    const q = search?.get('tab')?.toLowerCase();
+    const match = TABS.find(t => t.toLowerCase() === q);
+    return match ?? 'Zones';
+  })();
+
+  const [tab, setTab]             = useState<Tab>(initialTab);
   const zones = useZones(mac as string);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);

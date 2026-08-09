@@ -20,13 +20,19 @@ devicesRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
     const devices = await db.device.findMany({
       where,
       orderBy: { lastSeenAt: 'desc' },
-      include: { zones: { orderBy: { number: 'asc' } }, schedules: { where: { active: true }, select: { uuid: true } } },
+      include: {
+        zones:     { orderBy: { number: 'asc' } },
+        schedules: { where: { active: true }, select: { uuid: true } },
+        _count:    { select: { schedules: true } },
+      },
     });
     res.json(devices.map(d => ({
       ...d,
       hasActiveSchedule: d.schedules.length > 0,
       activeScheduleUuid: d.schedules[0]?.uuid ?? null,
+      scheduleCount:     d._count.schedules,
       schedules: undefined,
+      _count:    undefined,
     })));
   } catch (err) { next(err); }
 });
