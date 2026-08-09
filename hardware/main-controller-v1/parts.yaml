@@ -331,7 +331,7 @@ parts:
       notes: |
         REV1 SHIPPED WITH REAL PIN-SWAP BUG on the previous D2 part (DB107S with Device:D_Bridge_+-AA symbol). Rev2 uses MB10S (LCSC C2488) with easyeda2kicad-imported symbol AND footprint — pinout is DFM-authoritative because both came from the same JLC source.
         Rev1 bug detail: Device:D_Bridge_+-AA had pins 1=+, 2=-, 3=A, 4=A. DB107S needed 1=A, 2=-, 3=A, 4=+. Would have destroyed board on power-up (24VAC → +VRAW directly). Fix applied 2026-07-11 via in-place symbol pin renumber.
-        For rev2 MB10S: schematic wiring now correct (pad 1=AC, pad 2=GND, pad 3=AC, pad 4=+VRAW). See [[project_d2_bridge_rectifier_silkscreen]].
+        For rev2 MB10S: schematic wiring verified from .kicad_pcb 2026-08-08 — pad 1=+VRAW (DC+), pad 2=GND (DC−), pad 3=24VAC_COM (AC), pad 4=24VAC_HOT (AC). Matches easyeda2kicad symbol pin definitions (1=+, 2=−, 3=C2, 4=C1). See [[project_d2_bridge_rectifier_silkscreen]].
 
   - refs: [D4]
     value: "SS14"
