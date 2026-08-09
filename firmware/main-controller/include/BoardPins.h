@@ -9,7 +9,9 @@
 // (MOC3062M pin 1 → 120Ω → GPIO, pin 2 → GND), which fires the triac and
 // energizes the 24VAC solenoid.
 
-static constexpr uint8_t ZONE_GPIOS[12] = {
+#define MAX_ZONES 12
+
+static constexpr uint8_t ZONE_GPIOS[MAX_ZONES] = {
     38,  // Zone 1
     14,  // Zone 2
     13,  // Zone 3

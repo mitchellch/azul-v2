@@ -17,7 +17,7 @@ if (!mac) { console.error('Usage: node sim-scheduler.mjs <mac>'); process.exit(1
 
 const args     = process.argv.slice(3);
 const zoneSecs = parseInt(args[args.indexOf('--zone-secs')  + 1]) || 60;
-const numZones = parseInt(args[args.indexOf('--total-zones') + 1]) || 8;
+const numZones = parseInt(args[args.indexOf('--total-zones') + 1]) || 12;
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 const TOPIC    = `azul/${mac}/status`;

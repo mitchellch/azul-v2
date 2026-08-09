@@ -7,6 +7,7 @@ import { router } from './router';
 import { mqttClient } from './mqtt/client';
 import { errorHandler } from './middleware/errorHandler';
 import { startOfflineSweep } from './jobs/offlineSweep';
+import { ensureZones } from './lib/ensureZones';
 
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
@@ -30,6 +31,7 @@ app.use(errorHandler);
 
 mqttClient.connect();
 startOfflineSweep();
+ensureZones().catch(e => console.error('[ensureZones]', e));
 
 app.listen(PORT, () => {
   console.log(`[Server] Listening on http://localhost:${PORT}`);

@@ -8,6 +8,7 @@ import { getConnectionStatus } from '../lib/connectionMonitor';
 import { zoneStateCache } from '../lib/zoneStateCache';
 import { logEvent } from '../lib/eventLog';
 import { bumpAndPushConfig, buildConfigBlob } from '../lib/configSync';
+import { MAX_ZONES } from '../lib/constants';
 import { z } from 'zod';
 
 export const devicesRouter = Router();
@@ -128,9 +129,8 @@ devicesRouter.post('/claim', async (req: Request, res: Response, next: NextFunct
         },
       });
 
-      // Auto-create 8 zones
       await tx.zone.createMany({
-        data: Array.from({ length: 8 }, (_, i) => ({
+        data: Array.from({ length: MAX_ZONES }, (_, i) => ({
           deviceId: d.id,
           number: i + 1,
         })),
@@ -178,7 +178,7 @@ devicesRouter.post('/:mac/zones/:zoneNumber/start', async (req: Request, res: Re
     await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
     const duration   = (req.body.duration as number) ?? 60;
-    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
+    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > MAX_ZONES) throw new HttpError(400, 'Invalid zone number');
     const anyRunning = zoneStateCache.get(req.params.mac).some(z => z.status === 'running');
     zoneStateCache.patch(req.params.mac, zoneNumber, { status: anyRunning ? 'pending' : 'running', runtime: duration, source: 'REST' });
     sseRegistry.emit(req.params.mac, { type: 'status', zones: zoneStateCache.get(req.params.mac).map(z => ({ id: z.id, status: z.status, runtime_seconds: z.runtime, source: z.source })) });

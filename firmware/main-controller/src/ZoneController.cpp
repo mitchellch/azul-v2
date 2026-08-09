@@ -3,6 +3,12 @@
 #include "Logger.h"
 #include <Preferences.h>
 static const char* NVS_NS = "zones";
+
+static inline void driveZone(uint8_t zoneId, bool on) {
+  digitalWrite(ZONE_GPIOS[zoneId - 1], on ? HIGH : LOW);
+}
+#else
+static inline void driveZone(uint8_t, bool) {}
 #endif
 
 ZoneController::ZoneController() : _lastTickMs(0) {
@@ -20,6 +26,7 @@ bool ZoneController::startZone(uint8_t zoneId, uint32_t durationSeconds, uint8_t
   z.status = ZoneStatus::RUNNING;
   z.runtimeSeconds = durationSeconds;
   z.source = source;
+  driveZone(zoneId, true);
   return true;
 }
 
@@ -29,6 +36,7 @@ bool ZoneController::stopZone(uint8_t zoneId) {
   z.status = ZoneStatus::IDLE;
   z.runtimeSeconds = 0;
   z.source = 0;
+  driveZone(zoneId, false);
   return true;
 }
 
@@ -37,6 +45,7 @@ bool ZoneController::stopAll() {
     _zones[i].status = ZoneStatus::IDLE;
     _zones[i].runtimeSeconds = 0;
     _zones[i].source = 0;
+    driveZone(i + 1, false);
   }
   return true;
 }
@@ -48,6 +57,11 @@ const Zone* ZoneController::getZone(uint8_t zoneId) const {
 
 void ZoneController::begin() {
 #ifndef UNIT_TEST
+  for (uint8_t i = 0; i < MAX_ZONES; i++) {
+    pinMode(ZONE_GPIOS[i], OUTPUT);
+    digitalWrite(ZONE_GPIOS[i], LOW);
+  }
+
   Preferences prefs;
   prefs.begin(NVS_NS, true);
   char key[4];
@@ -88,6 +102,7 @@ void ZoneController::tick() {
       if (_zones[i].runtimeSeconds <= elapsed) {
         _zones[i].runtimeSeconds = 0;
         _zones[i].status = ZoneStatus::IDLE;
+        driveZone(i + 1, false);
 #ifndef UNIT_TEST
         Logger::log("[Zone %d] Timer expired", _zones[i].id);
 #endif

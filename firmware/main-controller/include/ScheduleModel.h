@@ -5,11 +5,13 @@
 #include <Arduino.h>
 #endif
 
+#include "BoardPins.h"
+
 #define MAX_RUNS_PER_SCHEDULE  48
 #define SCHEDULE_RING_SIZE      5
 #define AUDIT_RING_SIZE       256
 #define CHANGELOG_RING_SIZE    32
-#define MAX_ZONES               8
+// MAX_ZONES comes from BoardPins.h (== sizeof(ZONE_GPIOS))
 
 // Bit positions for dayMask: bit 0 = Sunday ... bit 6 = Saturday (tm_wday order)
 #define DAY_SUN  (1 << 0)

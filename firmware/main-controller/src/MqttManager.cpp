@@ -152,7 +152,14 @@ void MqttManager::publishStatus() {
             zo["source"] = (z->source < 5) ? srcNames[z->source] : "unknown";
     }
 
-    char buf[512];
+    // 12 zones × ~65B each + base fields → ~950B worst case; 1536B gives headroom
+    // for future field additions without another silent-truncation bug.
+    char buf[1536];
+    size_t needed = measureJson(doc);
+    if (needed >= sizeof(buf)) {
+        Serial.printf("[MQTT] publishStatus payload %u >= buf %u, dropping\n", (unsigned)needed, (unsigned)sizeof(buf));
+        return;
+    }
     size_t len = serializeJson(doc, buf, sizeof(buf));
     _client.publish(_topicStatus, (const uint8_t*)buf, len, false);
 }

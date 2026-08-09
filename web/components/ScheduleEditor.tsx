@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { MAX_ZONES } from '@/lib/constants';
 
 export type ScheduleRun = {
   zone_id: number;
@@ -50,7 +51,7 @@ function today(): string { return new Date().toISOString().slice(0, 10); }
 function blankRun(existingRuns: ScheduleRun[] = []): ScheduleRun {
   const used = new Set(existingRuns.map(r => r.zone_id));
   let zone_id = 1;
-  for (let i = 1; i <= 8; i++) { if (!used.has(i)) { zone_id = i; break; } }
+  for (let i = 1; i <= MAX_ZONES; i++) { if (!used.has(i)) { zone_id = i; break; } }
   const now = new Date();
   return { zone_id, day_mask: 127, hour: now.getHours(), minute: now.getMinutes(), duration_seconds: 300 };
 }

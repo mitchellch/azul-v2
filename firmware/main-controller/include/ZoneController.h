@@ -6,7 +6,7 @@
 #include <Preferences.h>
 #endif
 
-#define MAX_ZONES 8
+#include "BoardPins.h"
 
 enum class ZoneStatus { IDLE, RUNNING, ERROR };
 

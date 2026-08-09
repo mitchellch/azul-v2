@@ -11,6 +11,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useControllerConnection } from '@/context/ControllerConnection';
 import { sliderToSeconds, secondsToSlider, formatDurationLabel, SLIDER_MAX_POS, SLIDER_LABELS } from '@/utils/durationSlider';
 import { WeekGlance } from '@/components/WeekGlance';
+import { MAX_ZONES } from '@/lib/constants';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -655,7 +656,7 @@ function RunCard({ run, runIndex, expanded, onExpand, canRemove, zones, onUpdate
         <TouchableOpacity style={zpStyles.overlay} activeOpacity={1} onPress={() => setZonePickerOpen(false)}>
           <View style={zpStyles.sheet}>
             <Text style={zpStyles.title}>Select Zone</Text>
-            {(zones.length > 0 ? zones : Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}` }))).map(z => (
+            {(zones.length > 0 ? zones : Array.from({ length: MAX_ZONES }, (_, i) => ({ id: i + 1, name: `Zone ${i + 1}` }))).map(z => (
               <TouchableOpacity
                 key={z.id}
                 style={[zpStyles.item, run.zone_id === z.id && zpStyles.itemActive]}

@@ -7,6 +7,7 @@ import { assertDeviceAccess } from '../lib/deviceAccess';
 import { logEvent } from '../lib/eventLog';
 import { bumpAndPushConfig } from '../lib/configSync';
 import { HttpError } from '../middleware/errorHandler';
+import { MAX_ZONES } from '../lib/constants';
 
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/zones');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -47,7 +48,7 @@ zonesRouter.put('/:mac/zones/:zoneNumber', async (req: Request, res: Response, n
   try {
     const device     = await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
-    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
+    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > MAX_ZONES) throw new HttpError(400, 'Invalid zone number');
 
     const { name, color } = req.body;
     const updateData: Record<string, string | null> = {};
@@ -77,7 +78,7 @@ zonesRouter.put('/:mac/zones/:zoneNumber/photo', upload.single('photo'), async (
   try {
     const device     = await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
-    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
+    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > MAX_ZONES) throw new HttpError(400, 'Invalid zone number');
     if (!req.file) throw new HttpError(400, 'No photo uploaded');
 
     const photoUrl = `/uploads/zones/${req.file.filename}`;
@@ -106,7 +107,7 @@ zonesRouter.delete('/:mac/zones/:zoneNumber/photo', async (req: Request, res: Re
   try {
     const device     = await assertDeviceAccess(req.params.mac, req.user!.id);
     const zoneNumber = parseInt(req.params.zoneNumber, 10);
-    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > 8) throw new HttpError(400, 'Invalid zone number');
+    if (isNaN(zoneNumber) || zoneNumber < 1 || zoneNumber > MAX_ZONES) throw new HttpError(400, 'Invalid zone number');
 
     const existing = await db.zone.findUnique({
       where: { deviceId_number: { deviceId: device.id, number: zoneNumber } },

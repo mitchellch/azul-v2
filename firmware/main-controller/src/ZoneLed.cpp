@@ -58,14 +58,18 @@ void ZoneLed::off() {
 void ZoneLed::colorForZone(uint8_t zoneId, uint8_t& r, uint8_t& g, uint8_t& b) const {
     // Rainbow + white at half intensity
     switch (zoneId) {
-        case 1: r=255; g=255; b=255; break; // White
-        case 2: r=255; g=0;   b=0;   break; // Red
-        case 3: r=255; g=128; b=0;   break; // Orange
-        case 4: r=255; g=255; b=0;   break; // Yellow
-        case 5: r=0;   g=255; b=0;   break; // Green
-        case 6: r=0;   g=0;   b=255; break; // Blue
-        case 7: r=75;  g=0;   b=130; break; // Indigo
-        case 8: r=148; g=0;   b=211; break; // Violet
+        case 1:  r=255; g=255; b=255; break; // White
+        case 2:  r=255; g=0;   b=0;   break; // Red
+        case 3:  r=255; g=128; b=0;   break; // Orange
+        case 4:  r=255; g=255; b=0;   break; // Yellow
+        case 5:  r=0;   g=255; b=0;   break; // Green
+        case 6:  r=0;   g=0;   b=255; break; // Blue
+        case 7:  r=75;  g=0;   b=130; break; // Indigo
+        case 8:  r=148; g=0;   b=211; break; // Violet
+        case 9:  r=255; g=20;  b=147; break; // Hot pink
+        case 10: r=0;   g=255; b=255; break; // Cyan
+        case 11: r=128; g=255; b=0;   break; // Chartreuse
+        case 12: r=255; g=0;   b=255; break; // Magenta
         default: r=255; g=255; b=255; break;
     }
 }

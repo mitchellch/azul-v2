@@ -13,6 +13,7 @@ type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?
 const ZONE_COLORS: Record<number, string> = {
   1: '#6b7280', 2: '#ef4444', 3: '#f97316', 4: '#eab308',
   5: '#22c55e', 6: '#3b82f6', 7: '#6366f1', 8: '#a855f7',
+  9: '#ff1493', 10: '#00ffff', 11: '#80ff00', 12: '#ff00ff',
 };
 
 const WEB_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
