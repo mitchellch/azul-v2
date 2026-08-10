@@ -7,7 +7,7 @@
 // Patch: bug fix
 #define FW_VERSION_MAJOR 0
 #define FW_VERSION_MINOR 2
-#define FW_VERSION_PATCH 1
+#define FW_VERSION_PATCH 2
 
 // Injected at build time by scripts/inject_version.py — do not edit manually.
 #ifndef FW_GIT_SHA
