@@ -34,6 +34,7 @@ _Empty — the 2026-08-09 debug-session logs and the two uncommitted UI patches 
 - 2026-08-10 [web] Committed collapsible Zones panel on controller Settings tab
 - 2026-08-10 [mobile] Committed SSE snapshot name-sync in `CloudGradeMonitor.tsx`
 - 2026-08-10 [firmware] OTA P1 — A/B partitions, HTTP+SHA-256, first-boot rollback verified on hardware (`f76c47c`)
+- 2026-08-10 [server] OTA P2 — FirmwareRelease/DeviceOtaStatus, admin upload, /devices/:mac/ota trigger, MQTT event ingest. End-to-end verified on hardware (`521480a` … `ba6ff39`)
 
 _Move items here with a completion date when closed. Prune to the last ~10 to keep this readable._
 
