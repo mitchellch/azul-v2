@@ -91,6 +91,7 @@ model Device {
   schedules    Schedule[]
   auditLog     AuditLog[]
   eventLog     EventLog[]
+  otaStatuses  DeviceOtaStatus[]
 
   @@map("devices")
 }
@@ -194,4 +195,42 @@ model EventLog {
   @@index([deviceId, createdAt])
   @@index([createdAt])
   @@map("event_log")
+}
+
+// ---------------------------------------------------------------------------
+// Firmware releases (OTA) — see docs/design/ota-implementation-plan.md
+// ---------------------------------------------------------------------------
+
+model FirmwareRelease {
+  id           String   @id @default(uuid())
+  version      String                                 // semver, e.g. "0.2.1"
+  target       String                                 // "main-controller" for MVP
+  filePath     String   @map("file_path")             // relative to server/uploads/, e.g. "firmware/0.2.1/main-controller.bin"
+  sha256       String                                 // hex digest computed server-side
+  size         Int                                    // bytes
+  releaseNotes String?  @map("release_notes")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  otaStatuses DeviceOtaStatus[]
+
+  @@unique([version, target])
+  @@map("firmware_releases")
+}
+
+model DeviceOtaStatus {
+  id          String    @id @default(uuid())
+  deviceId    String    @map("device_id")
+  releaseId   String    @map("release_id")
+  version     String                                  // denormalized for quick lookup even if release is deleted
+  status      String                                  // "pending" | "downloading" | "verifying" | "installing" | "complete" | "error" | "rolled_back"
+  progress    Int       @default(0)                   // 0-100
+  error       String?
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  device  Device          @relation(fields: [deviceId], references: [id])
+  release FirmwareRelease @relation(fields: [releaseId], references: [id])
+
+  @@index([deviceId, startedAt])
+  @@map("device_ota_status")
 }
