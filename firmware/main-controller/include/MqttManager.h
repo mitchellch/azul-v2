@@ -9,10 +9,14 @@
 #include "TimeManager.h"
 #include "AuditLog.h"
 
+class OtaManager;
+
 class MqttManager {
 public:
     MqttManager(ZoneController& zones, ZoneQueue& queue,
                 Scheduler& scheduler, TimeManager& time, AuditLog& audit);
+
+    void setOtaManager(OtaManager* ota) { _ota = ota; }
 
     void begin();
     void tick();
@@ -20,6 +24,7 @@ public:
     void publishStatus();
     void publishSchedules();
     void publishZoneTransition(uint8_t zoneId, const char* type, uint16_t durationSeconds, uint8_t source);
+    void publishOtaEvent(const char* type, const char* version, JsonObject extra);
     void requestConfig();
 
     bool isConnected();
@@ -52,6 +57,7 @@ private:
     unsigned long _lastConnectAttempt;
     uint8_t       _failCount;
     uint32_t      _configVersion;
+    OtaManager*   _ota = nullptr;
 
     void loadBrokerConfig();
     void loadConfigVersion();

@@ -14,6 +14,8 @@
 #include "ZoneLed.h"
 #include "ZoneQueue.h"
 #include "MqttManager.h"
+#include "OtaManager.h"
+#include <esp_ota_ops.h>
 
 ZoneController zones;
 WiFiManager    wifiManager;
@@ -24,6 +26,7 @@ ChangeLog      changeLog;
 ZoneQueue      zoneQueue(zones, auditLog);
 Scheduler      scheduler(timeManager, zones, scheduleStore, auditLog, changeLog, zoneQueue);
 MqttManager    mqttManager(zones, zoneQueue, scheduler, timeManager, auditLog);
+OtaManager     otaManager(mqttManager);
 RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue, mqttManager);
 ClaimManager   claimMgr;
 BleServer      bleServer(zones, auditLog, zoneQueue, scheduler, claimMgr, timeManager);
@@ -48,6 +51,13 @@ bool          restStarted    = false;
 bool          ntpStarted     = false;
 bool          mqttStarted    = false;
 
+// OTA first-boot verify: if we booted into a pending-verify partition, we have
+// OTA_VERIFY_TIMEOUT_MS to confirm the new firmware works (MQTT connect) before
+// the bootloader auto-rolls back to the previous slot on next reboot.
+#define OTA_VERIFY_TIMEOUT_MS 60000
+bool          otaPendingVerify = false;
+unsigned long otaVerifyDeadline = 0;
+
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -55,6 +65,19 @@ void setup() {
   Logger::init();
 
   Serial.println("\n[Azul] Main Controller booting...");
+
+  // OTA first-boot check — if the running partition is pending verify, arm
+  // the timeout that will roll back if MQTT never connects.
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t ota_state;
+  if (running && esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+    if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+      otaPendingVerify  = true;
+      otaVerifyDeadline = millis() + OTA_VERIFY_TIMEOUT_MS;
+      Serial.printf("[OTA] Booted into pending-verify partition %s — %us to confirm\n",
+                    running->label, OTA_VERIFY_TIMEOUT_MS / 1000);
+    }
+  }
 
   claimMgr.begin();
   zones.begin();
@@ -81,6 +104,7 @@ void setup() {
     // Server is source of truth — phone forwards BLE edits via pending queue
   };
 
+  mqttManager.setOtaManager(&otaManager);
   if (wifiManager.isConnected()) {
     mqttManager.begin();
     mqttStarted = true;
@@ -102,6 +126,19 @@ void loop() {
   serialCli.poll();
   bleServer.tick();
   if (mqttStarted) mqttManager.tick();
+
+  // OTA verify: on success (MQTT up within window) mark valid; on timeout, roll back.
+  if (otaPendingVerify) {
+    if (mqttStarted && mqttManager.isConnected()) {
+      esp_ota_mark_app_valid_cancel_rollback();
+      Serial.println("[OTA] New firmware confirmed healthy — rollback canceled");
+      otaPendingVerify = false;
+    } else if ((int32_t)(now - otaVerifyDeadline) >= 0) {
+      Serial.println("[OTA] Verify window expired — rolling back to previous slot");
+      esp_ota_mark_app_invalid_rollback_and_reboot();
+      // Unreachable
+    }
+  }
 
   if (now - lastBleNotify >= BLE_NOTIFY_INTERVAL_MS) {
     bleServer.notifyStatus();

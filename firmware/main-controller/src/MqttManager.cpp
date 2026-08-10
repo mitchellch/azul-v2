@@ -1,4 +1,5 @@
 #include "MqttManager.h"
+#include "OtaManager.h"
 #include "ScheduleJson.h"
 #include "version.h"
 #include <ArduinoJson.h>
@@ -193,6 +194,21 @@ void MqttManager::publishSchedules() {
     _client.publish(_topicSchedules, (const uint8_t*)out.c_str(), out.length(), false);
 }
 
+void MqttManager::publishOtaEvent(const char* type, const char* version, JsonObject extra) {
+    if (!_client.connected()) return;
+
+    JsonDocument doc;
+    doc["type"]    = type;
+    doc["version"] = version;
+    doc["ts"]      = (uint32_t)_time.now();
+    // Copy extra fields (percent, error, duration_ms, ...)
+    for (JsonPair kv : extra) doc[kv.key()] = kv.value();
+
+    char buf[256];
+    size_t len = serializeJson(doc, buf, sizeof(buf));
+    _client.publish(_topicEvents, (const uint8_t*)buf, len, false);
+}
+
 void MqttManager::publishZoneTransition(uint8_t zoneId, const char* type, uint16_t durationSeconds, uint8_t source) {
     if (!_client.connected()) return;
 
@@ -296,6 +312,10 @@ void MqttManager::handleMessage(const char* topic, const char* payload) {
     } else if (strcmp(cmd, "schedule/deactivate") == 0) {
         _scheduler.deactivate();
         publishStatus();
+
+    } else if (strcmp(cmd, "ota/update") == 0) {
+        if (_ota) _ota->handleUpdate(data);
+        else Serial.println("[MQTT] ota/update received but OtaManager not wired");
 
     } else if (strcmp(cmd, "time/set") == 0) {
         int32_t tzOffset = data["tz_offset"] | 0;
