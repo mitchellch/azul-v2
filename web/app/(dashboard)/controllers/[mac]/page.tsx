@@ -113,6 +113,7 @@ export default function ControllerPage() {
   const [nameEdit, setNameEdit]     = useState('');
   const [savingName, setSavingName] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [zonesPanelOpen, setZonesPanelOpen] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
   const fileInputRefs  = useRef<Record<number, HTMLInputElement | null>>({});
@@ -781,9 +782,23 @@ export default function ControllerPage() {
 
           {/* Zones */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => setZonesPanelOpen(v => !v)}
+              className={`w-full flex items-center justify-between px-5 py-3 text-left hover:bg-gray-50 ${zonesPanelOpen ? 'border-b border-gray-100' : ''}`}
+              aria-expanded={zonesPanelOpen}
+            >
               <h3 className="font-semibold text-gray-900">Zones</h3>
-            </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`w-4 h-4 text-gray-400 transition-transform ${zonesPanelOpen ? 'rotate-90' : ''}`}
+              >
+                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
+              </svg>
+            </button>
+            {zonesPanelOpen && (
             <div className="divide-y divide-gray-50">
               {zones.map(z => {
                 const val   = zoneEdits[z.number] ?? z.name ?? '';
@@ -824,6 +839,7 @@ export default function ControllerPage() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Device info */}
