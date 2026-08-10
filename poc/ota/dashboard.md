@@ -23,7 +23,7 @@
 | Phase | Description | Status | Depends on |
 | :--- | :--- | :--- | :--- |
 | **P1** | Firmware — A/B partitions, OtaManager, first-boot rollback | ✅ | — |
-| **P2** | Server — FirmwareRelease model, upload + trigger endpoints, event ingest | ⚪ | P1 (MQTT contract) |
+| **P2** | Server — FirmwareRelease model, upload + trigger endpoints, event ingest | 🔵 | P1 (MQTT contract) |
 | **P3** | Web UI — /firmware page + Settings Update button | ⚪ | P2 |
 | **P4** | Signing — Ed25519, Secure Boot v2, anti-rollback | ⚪ | P1–P3 |
 | **P5** | Storage + rollouts — S3, pre-signed URLs, staged rollout engine | ⚪ | P2 |
@@ -57,17 +57,19 @@
 **Owner:** Mitch
 **Target:** 1 day
 
-- ⚪ Prisma `FirmwareRelease` model
-- ⚪ Prisma `DeviceOtaStatus` model
-- ⚪ Migration applied
-- ⚪ `POST /api/admin/firmware` (multipart upload, server-side SHA-256)
-- ⚪ `GET  /api/admin/firmware` (list releases)
-- ⚪ `POST /api/devices/:mac/ota` (publishes `cmd/ota/update`)
-- ⚪ Static route `/firmware/*` from `server/uploads/firmware/`
-- ⚪ MQTT event handler persists `ota_progress` / `ota_complete` / `ota_error` / `ota_rollback`
-- ⚪ Admin auth middleware wired on `/api/admin/firmware*`
-- ⚪ Reject upload if version already exists for that target
-- ⚪ Reject trigger if device offline
+- ✅ Prisma `FirmwareRelease` model
+- ✅ Prisma `DeviceOtaStatus` model
+- ✅ Migration applied (`20260810000000_add_firmware_ota`)
+- ✅ `POST /api/admin/firmware` (multipart upload, server-side SHA-256, streaming hash)
+- ✅ `GET  /api/admin/firmware` (list releases)
+- ✅ `POST /api/devices/:mac/ota` (publishes `cmd/ota/update`, creates DeviceOtaStatus row)
+- ✅ Static route `/firmware/*` from `server/uploads/firmware/`
+- ✅ MQTT event handler persists `ota_progress` / `ota_complete` / `ota_error`
+- ✅ Admin auth middleware wired on `/api/admin/firmware*` (M2M-only for MVP)
+- ✅ Reject upload if version already exists for that target (409)
+- ✅ Reject trigger if device offline (409)
+- ✅ Idempotent trigger — returns existing row if same release already in-flight
+- ⚪ `ota_rollback` ingest — device can't publish from old firmware, defer to P3 (server-side inference from post-update status ping)
 
 ## P3 — Web UI + Release Flow (MVP)
 
@@ -146,6 +148,7 @@ Run all 5 before declaring P1–P3 done.
 
 _Add dated notes here as work progresses. Older notes at the bottom._
 
+- **2026-08-10 (P2 code complete)** — Server-side OTA implemented: `FirmwareRelease` + `DeviceOtaStatus` Prisma models with migration `20260810000000_add_firmware_ota`, admin router at `/api/admin/firmware` (M2M-only), `POST /api/devices/:mac/ota` trigger, `/firmware/*` static route, and MQTT ingest of `ota_progress` / `ota_complete` / `ota_error` into `DeviceOtaStatus`. Types clean via `tsc --noEmit`. **Not yet smoke-tested on hardware** — reproduction recipe below. Firmware side didn't need changes: server picks the newest in-flight status row when the device event doesn't echo `statusId`.
 - **2026-08-10 (end of P1)** — End-to-end OTA verified on E8:F6:0A:85:4C:90. Flashed 0.2.0-with-OTA baseline, then pushed 0.2.1 via `mosquitto_pub` + `python3 -m http.server 8000`. Full download in 16.6s, `ota_complete` fired, controller rebooted into 0.2.1 with all NVS state preserved (schedules, WiFi creds, zone names). Bad-SHA path also verified: full download, `ota_error: sha256_mismatch`, no reboot. **Bug logged:** first `http_failed` event (URL got mangled in terminal paste) caused an unexpected reboot — needs investigation before P2. Two smoke tests still to run: MQTT-unreachable rollback, mid-download server crash. Idempotency deferred to P2/P3 (server-side check).
 - **2026-08-10** — P1 firmware code complete and builds clean. `OtaManager`, A/B partition table, first-boot rollback, and `ota/update` MQTT branch all in place. `MqttManager` gained `publishOtaEvent` helper.
 - **2026-08-10** — Plan + tracker created. Firmware currently at 0.2.0 (per [[project_mobile_status]]).
