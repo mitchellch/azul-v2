@@ -7,6 +7,7 @@ export type EventAction =
   | 'schedule_create' | 'schedule_update' | 'schedule_delete'
   | 'schedule_activate' | 'schedule_deactivate'
   | 'zone_rename' | 'zone_color' | 'device_rename' | 'zone_photo_set' | 'zone_photo_remove'
+  | 'ota_trigger' | 'ota_progress' | 'ota_complete' | 'ota_error' | 'ota_rollback'
   | 'error';
 
 export async function logEvent(

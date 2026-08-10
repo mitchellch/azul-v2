@@ -19,6 +19,10 @@ app.use(express.json());
 // Serve uploaded zone photos
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 
+// Serve firmware binaries — controllers download from here after receiving
+// an ota/update MQTT command with a URL pointing at this route.
+app.use('/firmware', express.static(path.resolve(__dirname, '../uploads/firmware')));
+
 // Public health check — no auth required
 app.get('/health', (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
