@@ -303,6 +303,74 @@ devicesRouter.put('/:mac/org', async (req: Request, res: Response, next: NextFun
   } catch (err) { next(err); }
 });
 
+// POST /api/devices/:mac/ota — trigger firmware update.
+// Publishes an ota/update MQTT command; the actual download happens
+// device-side. Returns the DeviceOtaStatus row that will get updated as
+// the device reports progress events.
+const OtaTriggerSchema = z.object({
+  version: z.string().min(1),
+  target:  z.string().default('main-controller'),
+});
+
+devicesRouter.post('/:mac/ota', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const device = await assertDeviceAccess(req.params.mac, req.user!.id);
+
+    if (!device.online) throw new HttpError(409, 'Device is offline');
+
+    const body = OtaTriggerSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten().fieldErrors));
+    const { version, target } = body.data;
+
+    const release = await db.firmwareRelease.findUnique({
+      where: { version_target: { version, target } },
+    });
+    if (!release) throw new HttpError(404, `Release ${target}@${version} not found`);
+
+    // Idempotency: if the device is already installing this exact version,
+    // return the existing status row instead of retriggering.
+    const inflight = await db.deviceOtaStatus.findFirst({
+      where: {
+        deviceId: device.id,
+        releaseId: release.id,
+        status: { in: ['pending', 'downloading', 'verifying', 'installing'] },
+      },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (inflight) { res.json({ ok: true, status: inflight, existing: true }); return; }
+
+    const status = await db.deviceOtaStatus.create({
+      data: {
+        deviceId:  device.id,
+        releaseId: release.id,
+        version:   release.version,
+        status:    'pending',
+      },
+    });
+
+    // Build the URL the controller will hit. SERVER_PUBLIC_URL wins if set
+    // (works from a phone on a different subnet); otherwise fall back to
+    // the request host, which works for `adb reverse` LAN dev flows.
+    const base = process.env.SERVER_PUBLIC_URL?.replace(/\/$/, '')
+      ?? `${req.protocol}://${req.get('host')}`;
+    const url = `${base}/firmware/${release.filePath}`;
+
+    mqttClient.publish(req.params.mac, 'ota/update', {
+      url,
+      sha256:  release.sha256,
+      version: release.version,
+      size:    release.size,
+      statusId: status.id,
+    });
+
+    logEvent(device.id, 'system', 'ota_trigger', {
+      version: release.version, target, statusId: status.id,
+    });
+
+    res.status(202).json({ ok: true, status });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/devices/:mac/org
 devicesRouter.delete('/:mac/org', async (req: Request, res: Response, next: NextFunction) => {
   try {

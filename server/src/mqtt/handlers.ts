@@ -128,6 +128,14 @@ export async function handleDeviceEvent(mac: string, data: Record<string, unknow
   mqttStats.events++;
   const type = data.type as string;
 
+  if (type === 'ota_progress' || type === 'ota_complete' || type === 'ota_error') {
+    handleOtaEvent(mac, type, data).catch(err => {
+      mqttStats.errors++;
+      console.error('[MQTT] handleOtaEvent error:', err.message);
+    });
+    return;
+  }
+
   if (type === 'zone_start') {
     const zoneNumber      = data.zone     as number;
     const durationSeconds = data.duration as number;
@@ -187,3 +195,49 @@ export async function handleDeviceEvent(mac: string, data: Record<string, unknow
 
 // Called when a device publishes to azul/{mac}/schedules — no-op, server is source of truth
 export async function handleDeviceSchedules(_mac: string, _data: Record<string, unknown>) {}
+
+// Called when a device reports OTA progress/completion/error.
+// Updates the most recent in-flight DeviceOtaStatus row for that device
+// and fans out the update to SSE subscribers so the UI badge tracks it.
+async function handleOtaEvent(mac: string, type: string, data: Record<string, unknown>) {
+  const device = await db.device.findUnique({ where: { mac } });
+  if (!device) return;
+
+  // Prefer the statusId echoed back from the controller (attached by the
+  // server on trigger). Fall back to the newest in-flight row for cases
+  // where a stale controller doesn't yet round-trip it.
+  const statusId = typeof data.statusId === 'string' ? data.statusId : undefined;
+  const row = statusId
+    ? await db.deviceOtaStatus.findUnique({ where: { id: statusId } })
+    : await db.deviceOtaStatus.findFirst({
+        where:  { deviceId: device.id, status: { in: ['pending', 'downloading', 'verifying', 'installing'] } },
+        orderBy: { startedAt: 'desc' },
+      });
+  if (!row) return;
+
+  const patch: Record<string, unknown> = {};
+  if (type === 'ota_progress') {
+    const pct = Math.max(0, Math.min(100, Number(data.percent ?? 0)));
+    patch.status   = 'downloading';
+    patch.progress = pct;
+  } else if (type === 'ota_complete') {
+    patch.status      = 'complete';
+    patch.progress    = 100;
+    patch.completedAt = new Date();
+  } else if (type === 'ota_error') {
+    patch.status      = 'error';
+    patch.error       = String(data.error ?? 'unknown');
+    patch.completedAt = new Date();
+  }
+
+  await db.deviceOtaStatus.update({ where: { id: row.id }, data: patch });
+  logEvent(device.id, 'system', type as 'ota_progress' | 'ota_complete' | 'ota_error', {
+    ...data, otaStatusId: row.id,
+  });
+
+  sseRegistry.emit(mac, {
+    type: 'ota',
+    otaStatusId: row.id,
+    ota: { ...row, ...patch },
+  });
+}
