@@ -9,9 +9,10 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 // Opens one persistent SSE stream per cloud controller so the home screen
 // gets instant offline/online updates via LWT without polling.
 export function CloudGradeMonitor({ children }: { children: ReactNode }) {
-  const controllers = useControllerStore(s => s.controllers);
-  const setGrade    = useCloudGradeStore(s => s.setGrade);
-  const sseRefs     = useRef<Map<string, EventSource>>(new Map());
+  const controllers     = useControllerStore(s => s.controllers);
+  const updateController = useControllerStore(s => s.updateController);
+  const setGrade        = useCloudGradeStore(s => s.setGrade);
+  const sseRefs         = useRef<Map<string, EventSource>>(new Map());
 
   useEffect(() => {
     const cloudCtrls = controllers.filter(c => c.connectionMode === 'cloud' && c.mac);
@@ -42,6 +43,11 @@ export function CloudGradeMonitor({ children }: { children: ReactNode }) {
             setGrade(ctrl.id, event.online ? 'good' : 'offline');
           } else if (event.type === 'status') {
             setGrade(ctrl.id, 'good');
+          } else if (event.type === 'snapshot' && event.device?.name) {
+            const local = useControllerStore.getState().controllers.find(c => c.id === ctrl.id);
+            if (local && local.name !== event.device.name) {
+              updateController(local.deviceId, { name: event.device.name });
+            }
           }
         } catch { /* ignore */ }
       });
