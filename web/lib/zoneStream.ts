@@ -17,12 +17,31 @@ export type ZoneLive = {
   photoUrl?: string | null;
 };
 
-type Subscriber = (zones: ZoneLive[]) => void;
+export type OtaLive = {
+  statusId: string;
+  version: string;
+  status: 'pending' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'error' | 'rolled_back';
+  progress: number;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+};
+
+type Subscriber    = (zones: ZoneLive[]) => void;
+type OtaSubscriber = (ota: OtaLive | null) => void;
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
 const cache       = new Map<string, ZoneLive[]>();
 const subscribers = new Map<string, Set<Subscriber>>();
+
+const otaCache       = new Map<string, OtaLive | null>();
+const otaSubscribers = new Map<string, Set<OtaSubscriber>>();
+
+function notifyOta(mac: string) {
+  const val = otaCache.get(mac) ?? null;
+  otaSubscribers.get(mac)?.forEach(fn => fn(val));
+}
 
 let connected        = false;
 let opening          = false;
@@ -113,6 +132,21 @@ function handleEvent(raw: string) {
 
   if (data.type === 'status' && Array.isArray(data.zones)) {
     applyZoneUpdate(mac, data.zones);
+  }
+
+  if (data.type === 'ota' && data.ota) {
+    const o = data.ota as Record<string, unknown>;
+    const next: OtaLive = {
+      statusId:    (o.id ?? data.otaStatusId) as string,
+      version:     (o.version ?? '') as string,
+      status:      (o.status  ?? 'pending')   as OtaLive['status'],
+      progress:    Number(o.progress ?? 0),
+      error:       (o.error   ?? null) as string | null,
+      startedAt:   (o.startedAt ?? new Date().toISOString()) as string,
+      completedAt: (o.completedAt ?? null) as string | null,
+    };
+    otaCache.set(mac, next);
+    notifyOta(mac);
   }
 }
 
@@ -212,6 +246,21 @@ export const zoneStream = {
     cache.set(mac, prev.map(z => z.number === zoneNumber ? { ...z, photoUrl } : z));
     notify(mac);
   },
+
+  getOta(mac: string): OtaLive | null {
+    return otaCache.get(mac) ?? null;
+  },
+
+  setOta(mac: string, ota: OtaLive | null) {
+    otaCache.set(mac, ota);
+    notifyOta(mac);
+  },
+
+  subscribeOta(mac: string, fn: OtaSubscriber): () => void {
+    if (!otaSubscribers.has(mac)) otaSubscribers.set(mac, new Set());
+    otaSubscribers.get(mac)!.add(fn);
+    return () => { otaSubscribers.get(mac)?.delete(fn); };
+  },
 };
 
 const EMPTY: ZoneLive[] = [];
@@ -220,4 +269,10 @@ export function useZones(mac: string): ZoneLive[] {
   const subscribe  = useCallback((fn: () => void) => zoneStream.subscribe(mac, fn), [mac]);
   const getSnapshot = useCallback(() => cache.get(mac) ?? EMPTY, [mac]);
   return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
+}
+
+export function useOta(mac: string): OtaLive | null {
+  const subscribe  = useCallback((fn: () => void) => zoneStream.subscribeOta(mac, fn), [mac]);
+  const getSnapshot = useCallback(() => otaCache.get(mac) ?? null, [mac]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }

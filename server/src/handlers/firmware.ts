@@ -26,15 +26,9 @@ const upload = multer({
 
 export const firmwareRouter = Router();
 
-// Firmware admin routes are only reachable by M2M tokens for now — no
-// human-facing admin UI on the MVP. Guard here so a stray auth0 access
-// token from a normal user can't reach these endpoints.
-firmwareRouter.use((req, _res, next) => {
-  if (!req.user?.isM2M) return next(new HttpError(403, 'Admin only'));
-  next();
-});
-
 // GET /api/admin/firmware — list releases, newest first.
+// Open to any authenticated user so end-user apps can show "update available"
+// without needing an M2M token. Read-only.
 firmwareRouter.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const releases = await db.firmwareRelease.findMany({
@@ -51,8 +45,16 @@ const UploadSchema = z.object({
   releaseNotes: z.string().optional(),
 });
 
-// POST /api/admin/firmware — multipart upload.
-firmwareRouter.post('/', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+// Firmware upload is a manufacturer operation — only M2M tokens (used by
+// scripts/release-firmware.sh) can push new binaries. Prevents any authenticated
+// end-user from seeding a malicious .bin into the release namespace.
+function requireM2M(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user?.isM2M) return next(new HttpError(403, 'Firmware upload requires M2M credentials'));
+  next();
+}
+
+// POST /api/admin/firmware — multipart upload (M2M only).
+firmwareRouter.post('/', requireM2M, upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
   const tmpPath = req.file?.path;
   try {
     if (!req.file) throw new HttpError(400, 'No file uploaded');

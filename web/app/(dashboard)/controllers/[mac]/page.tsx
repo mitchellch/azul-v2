@@ -5,7 +5,7 @@ import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
 import { ProgramEditor, Program, expandPrograms, DAY_NAMES, DAY_BITS, formatTime } from '@/components/ProgramEditor';
 import { WeekGlance } from '@/components/WeekGlance';
 import { ColorPicker } from '@/components/ColorPicker';
-import { zoneStream, useZones, ZoneLive } from '@/lib/zoneStream';
+import { zoneStream, useZones, useOta, ZoneLive, OtaLive } from '@/lib/zoneStream';
 
 type LogEntry    = { id: string; zoneNumber: number; startedAt: string; durationSeconds: number; source: string };
 type DeviceStatus = { firmware?: string; uptime_seconds?: number; zones_running?: boolean; mac?: string; ip?: string };
@@ -96,6 +96,7 @@ export default function ControllerPage() {
 
   const [tab, setTab]             = useState<Tab>(initialTab);
   const zones = useZones(mac as string);
+  const ota   = useOta(mac as string);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);
   const [programs, setPrograms]   = useState<Program[]>([]);
@@ -859,6 +860,22 @@ export default function ControllerPage() {
             </div>
           )}
 
+          {/* Firmware update */}
+          <FirmwareSection
+            mac={mac as string}
+            currentVersion={deviceStatus.firmware ?? null}
+            ota={ota}
+            onUpdated={async () => {
+              const d = await apiFetch(`/devices/${mac}`);
+              setDeviceStatus({
+                firmware:       d.firmware,
+                uptime_seconds: d.uptime_seconds,
+                mac:            d.mac,
+                ip:             d.ipAddress,
+              });
+            }}
+          />
+
           {/* Activity Log */}
           <ActivityLog logs={logs} zones={zones} />
         </div>
@@ -903,6 +920,165 @@ function formatLogDate(iso: string): string {
   if (isToday)     return `Today ${time}`;
   if (isYesterday) return `Yesterday ${time}`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+
+type ReleaseListItem = { id: string; version: string; target: string; sha256: string; size: number; releaseNotes: string | null; createdAt: string };
+
+function compareSemver(a: string, b: string): number {
+  const pa = a.split(/[.-]/).map(x => Number(x) || 0);
+  const pb = b.split(/[.-]/).map(x => Number(x) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  }
+  return 0;
+}
+
+function FirmwareSection({ mac, currentVersion, ota, onUpdated }: {
+  mac: string;
+  currentVersion: string | null;
+  ota: OtaLive | null;
+  onUpdated: () => void | Promise<void>;
+}) {
+  const [releases, setReleases]   = useState<ReleaseListItem[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [triggering, setTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const prevOtaStatus = useRef<OtaLive['status'] | null>(null);
+
+  useEffect(() => {
+    fetch('/api/proxy/admin/firmware').then(async r => {
+      if (!r.ok) { setLoadError(`Error ${r.status}`); return; }
+      const list = (await r.json()) as ReleaseListItem[];
+      setReleases(list.filter(x => x.target === 'main-controller'));
+    }).catch(e => setLoadError(String(e.message ?? e)));
+  }, []);
+
+  // Newest available version above the currently-installed one.
+  const available = releases
+    .filter(r => !currentVersion || compareSemver(r.version, currentVersion) > 0)
+    .sort((a, b) => compareSemver(b.version, a.version))[0] ?? null;
+
+  const inFlight = ota && ['pending','downloading','verifying','installing'].includes(ota.status);
+
+  // Refetch device metadata when an OTA transitions into `complete` so the
+  // "Current" line updates from 0.2.2 → 0.2.3 on its own.
+  useEffect(() => {
+    const prev = prevOtaStatus.current;
+    prevOtaStatus.current = ota?.status ?? null;
+    if (ota?.status === 'complete' && prev !== 'complete') {
+      // Small delay so the device has a moment to publish its new status ping.
+      const t = setTimeout(() => { void onUpdated(); }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, [ota?.status, onUpdated]);
+
+  async function trigger() {
+    if (!available) return;
+    setTriggerError('');
+    setTriggering(true);
+    try {
+      const res = await fetch(`/api/proxy/devices/${mac}/ota`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: available.version }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `Trigger failed (${res.status})`);
+      const row = body.status ?? {};
+      zoneStream.setOta(mac, {
+        statusId:    row.id,
+        version:     row.version ?? available.version,
+        status:      (row.status ?? 'pending') as OtaLive['status'],
+        progress:    Number(row.progress ?? 0),
+        error:       null,
+        startedAt:   row.startedAt ?? new Date().toISOString(),
+        completedAt: null,
+      });
+      setConfirmOpen(false);
+    } catch (e: any) {
+      setTriggerError(e.message ?? String(e));
+    } finally {
+      setTriggering(false);
+    }
+  }
+
+  // Nothing to show — up-to-date, no in-flight update, no visible error.
+  if (!inFlight && !available && ota?.status !== 'error' && !loadError) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100">
+        <h3 className="font-semibold text-gray-900">Firmware</h3>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+
+        {inFlight && ota && (
+          <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-sm">
+            <div className="flex justify-between mb-1">
+              <span className="text-blue-900 font-medium">Updating to {ota.version}</span>
+              <span className="text-blue-700">{ota.progress}%</span>
+            </div>
+            <div className="h-1.5 bg-blue-100 rounded overflow-hidden">
+              <div className="h-full bg-[#1a56db] transition-all" style={{ width: `${ota.progress}%` }} />
+            </div>
+            <p className="text-xs text-blue-700 mt-1 capitalize">{ota.status}</p>
+          </div>
+        )}
+        {ota?.status === 'error' && !inFlight && (
+          <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-sm text-red-700">
+            Update failed: {ota.error ?? 'unknown error'}
+          </div>
+        )}
+
+        {!inFlight && available && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm text-gray-900">
+                Firmware <span className="font-mono">{available.version}</span> is available.
+              </p>
+              {available.releaseNotes && (
+                <p className="text-xs text-gray-500 mt-0.5">{available.releaseNotes}</p>
+              )}
+            </div>
+            <button
+              onClick={() => { setTriggerError(''); setConfirmOpen(true); }}
+              className="text-xs px-3 py-1.5 rounded-md bg-[#1a56db] text-white font-semibold flex-shrink-0"
+            >
+              Update
+            </button>
+          </div>
+        )}
+        {triggerError && <p className="text-sm text-red-600">{triggerError}</p>}
+      </div>
+
+      {confirmOpen && available && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !triggering && setConfirmOpen(false)}>
+          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
+            <h4 className="font-semibold text-gray-900 mb-2">Update firmware?</h4>
+            <p className="text-sm text-gray-600 mb-4">
+              Update to <span className="font-mono">{available.version}</span>. The controller will reboot mid-update; any running zone will be canceled.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                disabled={triggering}
+                className="text-sm px-3 py-1.5 rounded-md border border-gray-200 text-gray-700"
+              >Cancel</button>
+              <button
+                onClick={trigger}
+                disabled={triggering}
+                className="text-sm px-3 py-1.5 rounded-md bg-[#1a56db] text-white font-semibold disabled:opacity-50"
+              >
+                {triggering ? 'Sending…' : 'Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ActivityLog({ logs, zones }: { logs: LogEntry[]; zones: ZoneLive[] }) {
