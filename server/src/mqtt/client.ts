@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules, handleDeviceConnection, setPublishFn, mqttStats } from './handlers';
+import { handleDeviceStatus, handleDeviceEvent, handleDeviceSchedules, handleDeviceConnection, setPublishFn, setClearRetainedFn, mqttStats } from './handlers';
 import { handleConfigRequest, handleConfigAck } from '../lib/configSync';
 
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
@@ -55,17 +55,31 @@ class MqttClient {
     });
   }
 
-  // Publish a command to a specific device
-  publish(mac: string, command: string, payload: object) {
+  // Publish a command to a specific device.
+  //
+  // options.retain: the broker keeps the last-published message on the topic
+  // and delivers it to any device that subscribes later. Used for ota/update
+  // so a device that reboots or reconnects mid-transaction still receives
+  // the command. Retained messages must be cleared by publishing an empty
+  // payload with retain=true to the same topic.
+  publish(mac: string, command: string, payload: object, options: { retain?: boolean } = {}) {
     if (!this.client?.connected) {
       console.error('[MQTT] Not connected — cannot publish');
       return;
     }
     const topic = `azul/${mac}/cmd/${command}`;
-    this.client.publish(topic, JSON.stringify(payload));
+    this.client.publish(topic, JSON.stringify(payload), { retain: !!options.retain });
     if (command.startsWith('config/')) mqttStats.configPushes++;
+  }
+
+  // Clear a retained topic (empty payload with retain=true).
+  clearRetained(mac: string, command: string) {
+    if (!this.client?.connected) return;
+    const topic = `azul/${mac}/cmd/${command}`;
+    this.client.publish(topic, '', { retain: true });
   }
 }
 
 export const mqttClient = new MqttClient();
-setPublishFn((mac, command, payload) => mqttClient.publish(mac, command, payload));
+setPublishFn((mac, command, payload, options) => mqttClient.publish(mac, command, payload, options));
+setClearRetainedFn((mac, command) => mqttClient.clearRetained(mac, command));

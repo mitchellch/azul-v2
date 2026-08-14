@@ -7,6 +7,7 @@ import { router } from './router';
 import { mqttClient } from './mqtt/client';
 import { errorHandler } from './middleware/errorHandler';
 import { startOfflineSweep } from './jobs/offlineSweep';
+import { startOtaStallSweep } from './jobs/otaStallSweep';
 import { ensureZones } from './lib/ensureZones';
 
 const app  = express();
@@ -35,6 +36,7 @@ app.use(errorHandler);
 
 mqttClient.connect();
 startOfflineSweep();
+startOtaStallSweep();
 ensureZones().catch(e => console.error('[ensureZones]', e));
 
 app.listen(PORT, () => {

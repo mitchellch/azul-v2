@@ -4,9 +4,14 @@ import { recordPing, recordDisconnect } from '../lib/connectionMonitor';
 import { zoneStateCache } from '../lib/zoneStateCache';
 import { logEvent } from '../lib/eventLog';
 
-type PublishFn = (mac: string, command: string, payload: object) => void;
+type PublishFn = (mac: string, command: string, payload: object, options?: { retain?: boolean }) => void;
 let _publish: PublishFn = () => {};
 export function setPublishFn(fn: PublishFn) { _publish = fn; }
+
+type ClearRetainedFn = (mac: string, command: string) => void;
+let _clearRetained: ClearRetainedFn = () => {};
+export function setClearRetainedFn(fn: ClearRetainedFn) { _clearRetained = fn; }
+export function clearRetained(mac: string, command: string) { _clearRetained(mac, command); }
 
 // Track which devices were already online so we only re-push on reconnect
 const onlineDevices = new Set<string>();
@@ -228,6 +233,12 @@ async function handleOtaEvent(mac: string, type: string, data: Record<string, un
     patch.status      = 'error';
     patch.error       = String(data.error ?? 'unknown');
     patch.completedAt = new Date();
+  }
+
+  // Clear the retained ota/update on any terminal state so a subsequent
+  // reboot doesn't re-trigger the OTA loop. See devicesRouter /:mac/ota.
+  if (patch.status === 'complete' || patch.status === 'error') {
+    _clearRetained(mac, 'ota/update');
   }
 
   await db.deviceOtaStatus.update({ where: { id: row.id }, data: patch });

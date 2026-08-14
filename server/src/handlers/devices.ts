@@ -429,13 +429,17 @@ devicesRouter.post('/:mac/ota', async (req: Request, res: Response, next: NextFu
       ?? `${req.protocol}://${req.get('host')}`;
     const url = `${base}/firmware/${release.filePath}`;
 
+    // Publish retained so a device that's offline or drops between the
+    // online check above and the broker delivery still receives the command
+    // on its next connect. The retained topic is cleared by the ota_complete
+    // / ota_error handler in mqtt/handlers.ts, and by the stall detector.
     mqttClient.publish(req.params.mac, 'ota/update', {
       url,
       sha256:  release.sha256,
       version: release.version,
       size:    release.size,
       statusId: status.id,
-    });
+    }, { retain: true });
 
     logEvent(device.id, 'system', 'ota_trigger', {
       version: release.version, target, statusId: status.id,
