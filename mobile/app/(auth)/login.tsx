@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { login, register, parseIdToken } from '@/services/auth';
 import { useAuthStore } from '@/store/auth';
+import { useControllerStore } from '@/store/controllers';
 
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,11 @@ export default function LoginScreen() {
       const credentials = await fn();
       const userInfo = parseIdToken(credentials.idToken);
       setSession(userInfo as any, credentials.accessToken);
+      useControllerStore
+        .getState()
+        .hydrateFromServer((userInfo as any).sub)
+        .then((r) => console.log('[hydrate] added=', r.added, 'existing=', r.existing))
+        .catch((e) => console.warn('[hydrate] failed:', e?.message ?? e));
     } catch (e: any) {
       if (e?.error !== 'a0.session.user_cancelled') {
         setError(e?.error_description ?? e?.error ?? e?.message ?? 'Login failed.');

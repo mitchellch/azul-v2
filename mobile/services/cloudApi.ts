@@ -6,15 +6,34 @@ async function authFetch(path: string, options: RequestInit = {}, signal?: Abort
   const { accessToken, clearSession } = useAuthStore.getState();
   if (!accessToken) throw new Error('Not authenticated');
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    signal: signal ?? options.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      ...(options.headers ?? {}),
-    },
-  });
+  const url = `${API_URL}${path}`;
+  const method = options.method ?? 'GET';
+  console.log('[authFetch] →', method, url, 'tokenLen=', accessToken?.length ?? 0);
+
+  // DIAGNOSTIC: 8s timeout via AbortController so we see hang vs slow
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  const t0 = Date.now();
+  let res;
+  try {
+    res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Connection': 'close',
+        ...(options.headers ?? {}),
+      },
+    });
+    clearTimeout(timeoutId);
+  } catch (e: any) {
+    clearTimeout(timeoutId);
+    console.log('[authFetch] ✗', method, url, 'threw after', Date.now() - t0, 'ms:', e?.name, e?.message ?? e);
+    throw e;
+  }
+  console.log('[authFetch] ←', method, url, res.status, 'in', Date.now() - t0, 'ms');
 
   if (res.status === 401) {
     clearSession();
@@ -27,6 +46,38 @@ async function authFetch(path: string, options: RequestInit = {}, signal?: Abort
     throw new Error(body.error ?? `API error ${res.status}`);
   }
   return res.json();
+}
+
+export type ServerDevice = {
+  id: string;
+  mac: string;
+  name: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  hasActiveSchedule?: boolean;
+  activeScheduleUuid?: string | null;
+  scheduleCount?: number;
+};
+
+export async function fetchDevices(): Promise<ServerDevice[]> {
+  return authFetch('/devices');
+}
+
+export type OtaStatusRow = {
+  id:          string;
+  version:     string;
+  status:      'pending' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'error' | 'rolled_back';
+  progress:    number;
+  error:       string | null;
+  startedAt:   string;
+  completedAt: string | null;
+};
+
+export async function triggerOta(mac: string, version: string): Promise<{ ok: boolean; existing?: boolean; status: OtaStatusRow }> {
+  return authFetch(`/devices/${mac}/ota`, {
+    method: 'POST',
+    body:   JSON.stringify({ version }),
+  });
 }
 
 export async function claimDevice(mac: string, name: string): Promise<{ id: string }> {

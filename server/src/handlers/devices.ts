@@ -13,6 +13,69 @@ import { z } from 'zod';
 
 export const devicesRouter = Router();
 
+// ---------------------------------------------------------------------------
+// Firmware update helper
+// ---------------------------------------------------------------------------
+
+// Parse a semver core "X.Y.Z" out of a version string; ignore any -sha-dirty
+// suffix baked in by the firmware build (e.g. "0.2.3-1c50c1f-dirty" → [0,2,3]).
+// Returns null if the string doesn't start with a semver core.
+function parseSemverCore(v: string | null | undefined): [number, number, number] | null {
+  if (!v) return null;
+  const m = v.match(/^(\d+)\.(\d+)\.(\d+)/);
+  return m ? [+m[1], +m[2], +m[3]] : null;
+}
+
+// Look up the most-recent OTA row for a device. Returned in device
+// responses so a client that mounts (or reconnects) mid-OTA sees the real
+// state instead of nothing — or, more importantly, sees a terminal state
+// (complete/error/rolled_back) so stale local progress bars self-heal.
+async function currentOtaStatus(deviceId: string) {
+  const row = await db.deviceOtaStatus.findFirst({
+    where:   { deviceId },
+    orderBy: { startedAt: 'desc' },
+  });
+  if (!row) return null;
+  return {
+    id:          row.id,
+    version:     row.version,
+    status:      row.status,
+    progress:    row.progress,
+    error:       row.error,
+    startedAt:   row.startedAt,
+    completedAt: row.completedAt,
+  };
+}
+
+// Look up the newest FirmwareRelease for the given target that is strictly
+// newer than the currently installed firmware. Returns null when nothing is
+// newer (or when there are no releases for the target at all).
+async function latestAvailableFirmware(target: string, installedVersion: string | null) {
+  const latest = await db.firmwareRelease.findFirst({
+    where:   { target },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!latest) return null;
+
+  const installed = parseSemverCore(installedVersion);
+  const available = parseSemverCore(latest.version);
+  if (!available) return null;
+  if (installed) {
+    for (let i = 0; i < 3; i++) {
+      if (available[i] > installed[i]) break;
+      if (available[i] < installed[i]) return null;
+      if (i === 2) return null; // equal at all three → not newer
+    }
+  }
+  return {
+    version:      latest.version,
+    sha256:       latest.sha256,
+    size:         latest.size,
+    releaseNotes: latest.releaseNotes,
+    createdAt:    latest.createdAt,
+  };
+}
+
 // GET /api/devices — list devices owned by the authenticated user
 devicesRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -61,7 +124,12 @@ devicesRouter.get('/stream', async (req: Request, res: Response, next: NextFunct
           return { ...z, status: live.status, runtime_seconds: live.runtime } as any;
         });
       }
-      res.write(`data: ${JSON.stringify({ type: 'snapshot', mac: device.mac, device })}\n\n`);
+      const [latestAvailable, currentOta] = await Promise.all([
+        latestAvailableFirmware(device.target, device.firmware),
+        currentOtaStatus(device.id),
+      ]);
+      const enriched = { ...device, latestAvailableFirmware: latestAvailable, currentOta };
+      res.write(`data: ${JSON.stringify({ type: 'snapshot', mac: device.mac, device: enriched })}\n\n`);
     }
 
     const unsubs = devices.map(d =>
@@ -96,7 +164,11 @@ devicesRouter.get('/:mac', async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    res.json(full);
+    const [latestAvailable, currentOta] = await Promise.all([
+      latestAvailableFirmware(full.target, full.firmware),
+      currentOtaStatus(full.id),
+    ]);
+    res.json({ ...full, latestAvailableFirmware: latestAvailable, currentOta });
   } catch (err) { next(err); }
 });
 
@@ -307,9 +379,10 @@ devicesRouter.put('/:mac/org', async (req: Request, res: Response, next: NextFun
 // Publishes an ota/update MQTT command; the actual download happens
 // device-side. Returns the DeviceOtaStatus row that will get updated as
 // the device reports progress events.
+// Body only needs a version — target is authoritative from the device row so
+// clients can't accidentally push a zone-extender build to a main-controller.
 const OtaTriggerSchema = z.object({
   version: z.string().min(1),
-  target:  z.string().default('main-controller'),
 });
 
 devicesRouter.post('/:mac/ota', async (req: Request, res: Response, next: NextFunction) => {
@@ -320,7 +393,8 @@ devicesRouter.post('/:mac/ota', async (req: Request, res: Response, next: NextFu
 
     const body = OtaTriggerSchema.safeParse(req.body);
     if (!body.success) throw new HttpError(400, JSON.stringify(body.error.flatten().fieldErrors));
-    const { version, target } = body.data;
+    const { version } = body.data;
+    const target = device.target;
 
     const release = await db.firmwareRelease.findUnique({
       where: { version_target: { version, target } },

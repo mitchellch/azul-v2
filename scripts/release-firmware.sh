@@ -30,8 +30,10 @@ fi
 if [[ -n "${1:-}" ]]; then
   VERSION="$1"
 else
-  # Extract "0.2.1" from "azul-mc-v0.2.1-<sha>[-dirty].bin"
-  VERSION=$(basename "$BIN" | sed -E 's/^azul-mc-v([0-9]+\.[0-9]+\.[0-9]+).*\.bin$/\1/')
+  # Extract "0.2.1" from either "azul-mc-v0.2.1-<sha>[-dirty].bin" or
+  # "azul-mc-YYYYMMDD-v0.2.1-<sha>[-dirty].bin". Anything is allowed
+  # between "azul-mc-" and "v<semver>".
+  VERSION=$(basename "$BIN" | sed -E 's/^azul-mc-.*v([0-9]+\.[0-9]+\.[0-9]+).*\.bin$/\1/')
   if [[ "$VERSION" == "$(basename "$BIN")" ]]; then
     echo "Could not parse version from $(basename "$BIN"). Pass explicitly." >&2
     exit 1

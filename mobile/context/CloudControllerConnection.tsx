@@ -42,9 +42,13 @@ export function CloudControllerConnectionProvider({ mac, ownerSub, children }: P
     if (cloudState.connected) retried.current = false;
   }, [cloudState.connected, cloudState.connecting, mac]);
 
-  // Subscribe to status notifications
+  // Subscribe to status notifications — merge partial updates so fields set
+  // by one event source (e.g. latestAvailableFirmware from snapshot) survive
+  // events from another source (e.g. firmware version from status).
   const [status, setStatus] = useState<StatusData>({});
-  useEffect(() => cloudManager.subscribeStatus(mac, setStatus), [mac]);
+  useEffect(() => cloudManager.subscribeStatus(mac, (s) =>
+    setStatus(prev => ({ ...prev, ...s }))
+  ), [mac]);
 
   // Subscribe to zone state from the global store
   const [zones, setZonesLocal] = useState<ZoneData[]>(() => controllerStore.get(mac));

@@ -33,6 +33,7 @@
 | Passwordless (email magic link) | P2 | Low-friction onboarding for invited landscapers |
 | Multi-org support (landscaper manages teams) | P2 | Org model exists in schema but unused |
 | Role-based permissions (operator vs viewer) | P1 | Viewer can see status/logs but not activate zones |
+| **Customer scoping (User → Customer → Controller)** | **P1** | **Required for landscape business owner target — max ~10 active controllers per customer, hundreds of customers per user. Server: `Customer` model + FK on `Device`, backfilled "My Home" default customer per user, `?customerId=` scope on `/api/devices*` + `/api/devices/stream`. Mobile: `useActiveCustomerStore`, customer picker + persistent indicator, `cloudManager.setActiveCustomer()`. See engram memory #213 and [[bug-real-fix-for-azul-mobile-tapping]].** |
 
 ### Mobile
 

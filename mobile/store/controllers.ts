@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchDevices } from '@/services/cloudApi';
 
 export type ConnectionGrade = 'good' | 'degraded' | 'poor' | 'offline';
 
@@ -39,6 +40,7 @@ type ControllerStore = {
   updateController: (deviceId: string, patch: Partial<Controller>) => void;
   removeController: (deviceId: string) => void;
   getController: (deviceId: string) => Controller | undefined;
+  hydrateFromServer: (ownerSub: string) => Promise<{ added: number; existing: number }>;
 };
 
 export const useControllerStore = create<ControllerStore>()(
@@ -63,6 +65,32 @@ export const useControllerStore = create<ControllerStore>()(
 
       getController: (deviceId) =>
         get().controllers.find((c) => c.deviceId === deviceId),
+
+      hydrateFromServer: async (ownerSub) => {
+        const serverDevices = await fetchDevices();
+        const localByMac = new Map(
+          get().controllers.map((c) => [c.mac ?? c.deviceId, c])
+        );
+        const toAdd: Controller[] = [];
+        for (const d of serverDevices) {
+          if (localByMac.has(d.mac)) continue;
+          toAdd.push({
+            id: d.id,
+            deviceId: d.mac, // MAC doubles as BLE deviceId on Android
+            name: d.name ?? d.mac,
+            ownerSub,
+            claimedAt: new Date(d.createdAt).getTime(),
+            lastSeen: d.lastSeenAt ? new Date(d.lastSeenAt).getTime() : undefined,
+            cloudId: d.id,
+            mac: d.mac,
+            connectionMode: 'cloud',
+          });
+        }
+        if (toAdd.length > 0) {
+          set((s) => ({ controllers: [...s.controllers, ...toAdd] }));
+        }
+        return { added: toAdd.length, existing: serverDevices.length - toAdd.length };
+      },
     }),
     {
       name: 'azul-controllers',

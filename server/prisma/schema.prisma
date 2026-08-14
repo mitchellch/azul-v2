@@ -78,6 +78,7 @@ model Device {
   mac            String    @unique
   name           String    @default("Azul Controller")
   firmware       String?
+  target         String    @default("main-controller")  // firmware target family — future values: "zone-extender", etc.
   ipAddress      String?   @map("ip_address")
   online         Boolean   @default(false)
   lastSeenAt     DateTime? @map("last_seen_at")

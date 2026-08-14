@@ -12,10 +12,19 @@ export type ZoneData = {
   photoUrl?: string | null;
 };
 
+export type LatestAvailableFirmware = {
+  version:      string;
+  sha256:       string;
+  size:         number;
+  releaseNotes: string | null;
+  createdAt:    string;
+};
+
 export type StatusData = {
   firmware?: string;
   uptime_seconds?: number;
   zones_running?: boolean;
+  latestAvailableFirmware?: LatestAvailableFirmware | null;
 };
 
 type ControllerConnectionContext = {

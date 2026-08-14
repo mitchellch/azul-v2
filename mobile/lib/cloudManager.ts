@@ -23,22 +23,53 @@ export type CloudConnectionState = { connecting: boolean; connected: boolean };
 type StateSubscriber  = (s: CloudConnectionState) => void;
 type StatusSubscriber = (s: StatusData) => void;
 
+export type OtaStatusEvent = {
+  id:          string;
+  version:     string;
+  status:      'pending' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'error' | 'rolled_back';
+  progress:    number;
+  error:       string | null;
+  startedAt:   string;
+  completedAt: string | null;
+} | null;
+
+type OtaSubscriber = (ota: OtaStatusEvent) => void;
+
 type Entry = {
   mac:               string;
   state:             CloudConnectionState;
-  es:                EventSource | null;
   pollTimer:         ReturnType<typeof setInterval>  | null;
-  sseRetryTimer:     ReturnType<typeof setTimeout>   | null;
   stopped:           boolean;
   stateSubscribers:  Set<StateSubscriber>;
   statusSubscribers: Set<StatusSubscriber>;
+  otaSubscribers:    Set<OtaSubscriber>;
+  // Last-known values, replayed to new subscribers so UIs that mount later
+  // see the current state immediately instead of waiting for the next event.
+  lastStatus:        StatusData | null;
+  lastOta:           OtaStatusEvent;
 };
+
+function emitStatus(e: Entry, patch: StatusData) {
+  e.lastStatus = { ...(e.lastStatus ?? {}), ...patch };
+  for (const fn of e.statusSubscribers) fn(patch);
+}
+
+function emitOta(e: Entry, ota: OtaStatusEvent) {
+  e.lastOta = ota;
+  for (const fn of e.otaSubscribers) fn(ota);
+}
 
 // ---------------------------------------------------------------------------
 // Module state
 // ---------------------------------------------------------------------------
 
 const entries = new Map<string, Entry>();
+
+// Single shared SSE stream for ALL user devices — one held OkHttp Call instead of N.
+// react-native-sse uses XHR which never releases its OkHttp Dispatcher slot on
+// long-lived streams; opening one-per-mac starves the fetch pool.
+let sharedSSE: EventSource | null = null;
+let sharedRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,42 +112,69 @@ function applyZoneUpdate(mac: string, rawZones: any[]) {
   controllerStore.syncQueue(mac);
 }
 
-function startSSE(e: Entry) {
-  if (e.stopped) return;
-  e.es?.close();
-  e.es = null;
-  if (e.sseRetryTimer) { clearTimeout(e.sseRetryTimer); e.sseRetryTimer = null; }
-
+function ensureSharedSSE() {
+  if (sharedSSE) return;
   const { accessToken } = useAuthStore.getState();
   if (!accessToken) return;
+  if (sharedRetryTimer) { clearTimeout(sharedRetryTimer); sharedRetryTimer = null; }
 
-  const es = new EventSource(`${API_URL}/devices/${e.mac}/stream`, {
+  console.log('[cloudManager] opening shared SSE at /devices/stream');
+  const es = new EventSource(`${API_URL}/devices/stream`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     lineEndingCharacter: '\n',
   });
 
   es.addEventListener('message', (ev: any) => {
-    if (e.stopped) return;
     try {
       const event = JSON.parse(ev.data);
+      const mac: string | undefined = event.mac;
+      if (!mac) return;
+      const e = entries.get(mac);
+      if (!e || e.stopped) return;
+
       if (event.type === 'snapshot') {
-        if (Array.isArray(event.device?.zones)) applyZoneUpdate(e.mac, event.device.zones);
+        if (Array.isArray(event.device?.zones)) applyZoneUpdate(mac, event.device.zones);
+        // Snapshot device object carries firmware version + latest-available-firmware
+        // (server-computed against device.target). Emit as partial status update;
+        // provider merges with prior status via setStatus(prev => ({...prev, ...s})).
+        if (event.device) {
+          emitStatus(e, {
+            firmware:                event.device.firmware ?? undefined,
+            latestAvailableFirmware: event.device.latestAvailableFirmware ?? null,
+          });
+          // Snapshot also carries the current OTA row — emit so a client that
+          // mounts or reconnects mid-OTA (or after a manual state reset) sees
+          // the authoritative server state instead of stale local progress.
+          if ('currentOta' in event.device) {
+            emitOta(e, event.device.currentOta ?? null);
+          }
+        }
       } else if (event.type === 'status') {
-        const s: StatusData = { firmware: event.firmware, uptime_seconds: event.uptime, zones_running: event.zones_running };
-        for (const fn of e.statusSubscribers) fn(s);
-        if (Array.isArray(event.zones)) applyZoneUpdate(e.mac, event.zones);
+        emitStatus(e, { firmware: event.firmware, uptime_seconds: event.uptime, zones_running: event.zones_running });
+        if (Array.isArray(event.zones)) applyZoneUpdate(mac, event.zones);
       } else if (event.type === 'connection') {
         setState(e, { connected: !!event.online });
+      } else if (event.type === 'ota') {
+        emitOta(e, event.ota ?? null);
       }
     } catch { /* ignore parse errors */ }
   });
 
   es.addEventListener('error', () => {
-    if (e.stopped) return;
-    e.sseRetryTimer = setTimeout(() => { if (!e.stopped) startSSE(e); }, 3_000);
+    console.warn('[cloudManager] shared SSE error, retrying in 3s');
+    sharedSSE?.close();
+    sharedSSE = null;
+    if (sharedRetryTimer) clearTimeout(sharedRetryTimer);
+    sharedRetryTimer = setTimeout(() => { if (entries.size > 0) ensureSharedSSE(); }, 3_000);
   });
 
-  e.es = es;
+  sharedSSE = es;
+}
+
+function closeSharedSSEIfIdle() {
+  if (entries.size > 0) return;
+  if (sharedRetryTimer) { clearTimeout(sharedRetryTimer); sharedRetryTimer = null; }
+  if (sharedSSE) { sharedSSE.close(); sharedSSE = null; console.log('[cloudManager] closed shared SSE (no active entries)'); }
 }
 
 async function load(e: Entry) {
@@ -135,12 +193,13 @@ async function load(e: Entry) {
     if (e.stopped) return;
     console.log(`[cloudManager] load(${e.mac}) — success, ${Array.isArray(d.zones) ? d.zones.length : 0} zones`);
 
-    const status: StatusData = {
-      firmware:      d.firmware       ?? undefined,
-      uptime_seconds: d.uptime_seconds ?? undefined,
-      zones_running:  d.zones_running  ?? undefined,
-    };
-    for (const fn of e.statusSubscribers) fn(status);
+    emitStatus(e, {
+      firmware:                d.firmware       ?? undefined,
+      uptime_seconds:          d.uptime_seconds ?? undefined,
+      zones_running:           d.zones_running  ?? undefined,
+      latestAvailableFirmware: d.latestAvailableFirmware ?? null,
+    });
+    if ('currentOta' in d) emitOta(e, d.currentOta ?? null);
 
     // Always authoritative — never seed, always overwrite
     const zonesData: any[] = Array.isArray(d.zones) ? d.zones : [];
@@ -156,7 +215,7 @@ async function load(e: Entry) {
 
     setState(e, { connecting: false, connected: true });
 
-    startSSE(e);
+    ensureSharedSSE();
 
     if (e.pollTimer) clearInterval(e.pollTimer);
     e.pollTimer = setInterval(() => pollStatus(e), POLL_INTERVAL_MS);
@@ -171,8 +230,12 @@ async function pollStatus(e: Entry) {
   try {
     const d = await getDeviceStatus(e.mac) as any;
     if (e.stopped) return;
-    const s: StatusData = { firmware: d.firmware, uptime_seconds: d.uptime_seconds, zones_running: d.zones_running };
-    for (const fn of e.statusSubscribers) fn(s);
+    emitStatus(e, {
+      firmware:                d.firmware,
+      uptime_seconds:          d.uptime_seconds,
+      zones_running:           d.zones_running,
+      latestAvailableFirmware: d.latestAvailableFirmware ?? null,
+    });
     if (Array.isArray(d.zones)) applyZoneUpdate(e.mac, d.zones);
   } catch { /* retry next interval */ }
 }
@@ -192,10 +255,13 @@ export const cloudManager = {
     const e: Entry = {
       mac,
       state: { connecting: true, connected: false },
-      es: null, pollTimer: null, sseRetryTimer: null,
+      pollTimer: null,
       stopped: false,
       stateSubscribers:  new Set(),
       statusSubscribers: new Set(),
+      otaSubscribers:    new Set(),
+      lastStatus:        null,
+      lastOta:           null,
     };
     entries.set(mac, e);
     load(e);
@@ -205,10 +271,9 @@ export const cloudManager = {
     const e = entries.get(mac);
     if (!e) return;
     e.stopped = true;
-    e.es?.close();
-    if (e.pollTimer)     clearInterval(e.pollTimer);
-    if (e.sseRetryTimer) clearTimeout(e.sseRetryTimer);
+    if (e.pollTimer) clearInterval(e.pollTimer);
     entries.delete(mac);
+    closeSharedSSEIfIdle();
   },
 
   reload(mac: string): void {
@@ -216,14 +281,14 @@ export const cloudManager = {
     if (!e) {
       e = {
         mac, state: { connecting: true, connected: false },
-        es: null, pollTimer: null, sseRetryTimer: null, stopped: false,
+        pollTimer: null, stopped: false,
         stateSubscribers: new Set(), statusSubscribers: new Set(),
+        otaSubscribers: new Set(),
+        lastStatus: null, lastOta: null,
       };
       entries.set(mac, e);
     } else {
-      e.es?.close(); e.es = null;
-      if (e.pollTimer)     clearInterval(e.pollTimer);
-      if (e.sseRetryTimer) clearTimeout(e.sseRetryTimer);
+      if (e.pollTimer) clearInterval(e.pollTimer);
     }
     load(e);
   },
@@ -243,6 +308,15 @@ export const cloudManager = {
     const e = entries.get(mac);
     if (!e) return () => {};
     e.statusSubscribers.add(fn);
+    if (e.lastStatus) fn(e.lastStatus);
     return () => e.statusSubscribers.delete(fn);
+  },
+
+  subscribeOta(mac: string, fn: OtaSubscriber): () => void {
+    const e = entries.get(mac);
+    if (!e) return () => {};
+    e.otaSubscribers.add(fn);
+    if (e.lastOta) fn(e.lastOta);
+    return () => e.otaSubscribers.delete(fn);
   },
 };

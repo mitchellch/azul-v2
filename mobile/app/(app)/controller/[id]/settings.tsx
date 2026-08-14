@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ActivityIndicator, StyleSheet,
-  Alert, ScrollView, TextInput, Platform, Keyboard, useWindowDimensions, Image,
+  Alert, ScrollView, TextInput, Platform, Keyboard, useWindowDimensions, Image, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
@@ -10,7 +10,8 @@ try { ImagePicker = require('expo-image-picker'); } catch {}
 import { useControllerConnection } from '@/context/ControllerConnection';
 import { useControllerStore } from '@/store/controllers';
 import { controllerStore } from '@/lib/controllerStore';
-import { claimDevice, updateDeviceName, uploadZonePhoto, deleteZonePhoto } from '@/services/cloudApi';
+import { claimDevice, updateDeviceName, uploadZonePhoto, deleteZonePhoto, triggerOta } from '@/services/cloudApi';
+import { cloudManager, type OtaStatusEvent } from '@/lib/cloudManager';
 import type { ConnectionMode } from '@/store/controllers';
 
 type TimeData = {
@@ -66,6 +67,88 @@ export default function SettingsScreen() {
   const zoneCardY       = useRef(0);
   const focusedZoneId   = useRef<number | null>(null);
   const [kbHeight, setKbHeight] = useState(0);
+
+  // Firmware update state (cloud mode only)
+  const [ota, setOta]                 = useState<OtaStatusEvent>(null);
+  const [otaConfirmOpen, setOtaConfirmOpen] = useState(false);
+  const [otaTriggering, setOtaTriggering]   = useState(false);
+  const [otaError, setOtaError]             = useState('');
+
+  useEffect(() => {
+    if (!isCloudMode || !ctrl?.mac) return;
+    return cloudManager.subscribeOta(ctrl.mac, setOta);
+  }, [isCloudMode, ctrl?.mac]);
+
+  // Track the version we most recently observed install successfully. This
+  // lets us hide the "Update available" pill immediately on completion,
+  // even though the device may take 15–30s to reboot and publish its new
+  // firmware string via MQTT/SSE.
+  const [justInstalled, setJustInstalled] = useState<string | null>(null);
+  const prevOtaStatus = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevOtaStatus.current;
+    prevOtaStatus.current = ota?.status ?? null;
+    if (ota?.status === 'complete' && prev !== 'complete' && ota.version) {
+      setJustInstalled(ota.version);
+      if (ctrl?.mac) {
+        setTimeout(() => cloudManager.reload(ctrl.mac!), 2_000);
+        setTimeout(() => cloudManager.reload(ctrl.mac!), 15_000);
+      }
+      const clear = setTimeout(() => setJustInstalled(null), 60_000);
+      return () => clearTimeout(clear);
+    }
+  }, [ota?.status, ota?.version, ctrl?.mac]);
+
+  // Clear the "just installed" flag once SSE confirms the device is running
+  // the expected version.
+  useEffect(() => {
+    const fw = (ctxStatus as any)?.firmware as string | undefined;
+    if (justInstalled && fw && fw.startsWith(justInstalled)) setJustInstalled(null);
+  }, [ctxStatus, justInstalled]);
+
+  const rawLatestAvail = (ctxStatus as any)?.latestAvailableFirmware ?? null;
+  const currentFw      = (ctxStatus as any)?.firmware as string | undefined;
+  // If the device already reports being on the version the OTA row targets,
+  // that row is history regardless of its recorded status. Hide it — the user
+  // shouldn't see "Update failed" or a lingering progress bar for a version
+  // they're already running.
+  const currentFwMatches = (v: string) =>
+    !!currentFw && (currentFw === v || currentFw.startsWith(v + '-'));
+  const effectiveOta = (ota && currentFwMatches(ota.version)) ? null : ota;
+  const otaInFlight  = !!effectiveOta && ['pending', 'downloading', 'verifying', 'installing'].includes(effectiveOta.status);
+  // Suppress a stale "Update available" offer whose version already matches
+  // the currently-installed firmware. Handles two races:
+  //   - just after install, before latestAvailableFirmware is refreshed
+  //   - status events that update firmware without touching latestAvailableFirmware
+  const isStaleOffer = !!rawLatestAvail && (
+    (justInstalled && rawLatestAvail.version === justInstalled) ||
+    currentFwMatches(rawLatestAvail.version)
+  );
+  const latestAvail = isStaleOffer ? null : rawLatestAvail;
+
+  async function handleOtaTrigger() {
+    if (!ctrl?.mac || !latestAvail) return;
+    setOtaError('');
+    setOtaTriggering(true);
+    try {
+      const res = await triggerOta(ctrl.mac, latestAvail.version);
+      const row = res.status ?? ({} as any);
+      setOta({
+        id:          row.id,
+        version:     row.version ?? latestAvail.version,
+        status:      row.status ?? 'pending',
+        progress:    Number(row.progress ?? 0),
+        error:       null,
+        startedAt:   row.startedAt ?? new Date().toISOString(),
+        completedAt: null,
+      });
+      setOtaConfirmOpen(false);
+    } catch (e: any) {
+      setOtaError(e?.message ?? 'Trigger failed');
+    } finally {
+      setOtaTriggering(false);
+    }
+  }
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', e => {
@@ -396,6 +479,84 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      {/* ── Firmware (cloud mode only) ─────────────────── */}
+      {isCloudMode && (
+        <>
+          <Text style={styles.sectionHeader}>Firmware</Text>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Current</Text>
+              <Text style={styles.rowValue}>{(ctxStatus as any)?.firmware ?? '—'}</Text>
+            </View>
+
+            {otaInFlight && effectiveOta && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.otaProgressWrap}>
+                  <View style={styles.otaProgressHeader}>
+                    <Text style={styles.otaProgressTitle}>Updating to {effectiveOta.version}</Text>
+                    <Text style={styles.otaProgressPct}>{effectiveOta.progress}%</Text>
+                  </View>
+                  <View style={styles.otaProgressTrack}>
+                    <View style={[styles.otaProgressFill, { width: `${Math.max(0, Math.min(100, effectiveOta.progress))}%` }]} />
+                  </View>
+                  <Text style={styles.otaProgressStatus}>{effectiveOta.status}</Text>
+                </View>
+              </>
+            )}
+
+            {!otaInFlight && justInstalled && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.otaSuccessBox}>
+                  <Text style={styles.otaSuccessText}>Installed {justInstalled}. Verifying…</Text>
+                </View>
+              </>
+            )}
+
+            {!otaInFlight && !justInstalled && effectiveOta?.status === 'error' && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.otaErrorBox}>
+                  <Text style={styles.otaErrorText}>Update failed: {effectiveOta.error ?? 'unknown error'}</Text>
+                </View>
+              </>
+            )}
+
+            {!otaInFlight && !justInstalled && latestAvail && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={styles.rowLabel}>{latestAvail.version} available</Text>
+                    {latestAvail.releaseNotes && (
+                      <Text style={styles.otaNotes} numberOfLines={2}>{latestAvail.releaseNotes}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.otaPill}
+                    onPress={() => { setOtaError(''); setOtaConfirmOpen(true); }}
+                  >
+                    <Text style={styles.otaPillText}>Update</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {!otaInFlight && !justInstalled && !latestAvail && effectiveOta?.status !== 'error' && (
+              <>
+                <View style={styles.divider} />
+                <View style={{ paddingVertical: 12 }}>
+                  <Text style={styles.otaUpToDate}>No updates available</Text>
+                </View>
+              </>
+            )}
+
+            {otaError ? <Text style={styles.otaErrorText}>{otaError}</Text> : null}
+          </View>
+        </>
+      )}
+
       {/* ── Zone Names (collapsible) ───────────────────── */}
       <Text style={styles.sectionHeader}>Zones</Text>
       <View style={styles.card} onLayout={e => { zoneCardY.current = e.nativeEvent.layout.y; }}>
@@ -588,9 +749,59 @@ export default function SettingsScreen() {
           )}
         </View>
       )}
+
+      <Modal visible={otaConfirmOpen && !!latestAvail} transparent animationType="fade" onRequestClose={() => !otaTriggering && setOtaConfirmOpen(false)}>
+        <TouchableOpacity
+          style={modalStyles.backdrop}
+          activeOpacity={1}
+          onPress={() => !otaTriggering && setOtaConfirmOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={modalStyles.card} onPress={() => {}}>
+            <Text style={modalStyles.title}>Update firmware?</Text>
+            <Text style={modalStyles.body}>
+              Update to <Text style={modalStyles.mono}>{latestAvail?.version}</Text>. The controller will reboot mid-update; any running zone will be canceled.
+            </Text>
+            {latestAvail?.releaseNotes && (
+              <Text style={modalStyles.notes}>{latestAvail.releaseNotes}</Text>
+            )}
+            <View style={modalStyles.buttonRow}>
+              <TouchableOpacity
+                style={modalStyles.cancelBtn}
+                onPress={() => setOtaConfirmOpen(false)}
+                disabled={otaTriggering}
+              >
+                <Text style={modalStyles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[modalStyles.confirmBtn, otaTriggering && styles.actionBtnDisabled]}
+                onPress={handleOtaTrigger}
+                disabled={otaTriggering}
+              >
+                {otaTriggering
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={modalStyles.confirmText}>Update</Text>}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  backdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  card:       { backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 360 },
+  title:      { fontSize: 17, fontWeight: '600', color: '#111827', marginBottom: 8 },
+  body:       { fontSize: 14, color: '#4b5563', marginBottom: 8, lineHeight: 20 },
+  mono:       { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  notes:      { fontSize: 13, color: '#6b7280', marginBottom: 12, fontStyle: 'italic' },
+  buttonRow:  { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  cancelBtn:  { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6, borderWidth: 1, borderColor: '#e5e7eb' },
+  cancelText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  confirmBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6, backgroundColor: '#1a56db', minWidth: 80, alignItems: 'center' },
+  confirmText:{ fontSize: 14, color: '#fff', fontWeight: '600' },
+});
 
 function StatRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
@@ -657,4 +868,19 @@ const styles = StyleSheet.create({
   firmwareLabel:     { fontSize: 11, color: '#c4c9d4' },
   debugBadge:        { backgroundColor: '#dc2626', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   debugText:         { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  otaPill:           { backgroundColor: '#1a56db', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
+  otaPillText:       { color: '#fff', fontWeight: '600', fontSize: 13 },
+  otaNotes:          { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  otaProgressWrap:   { paddingVertical: 8 },
+  otaProgressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  otaProgressTitle:  { fontSize: 14, fontWeight: '600', color: '#1e40af' },
+  otaProgressPct:    { fontSize: 14, color: '#1a56db', fontWeight: '500' },
+  otaProgressTrack:  { height: 6, borderRadius: 3, backgroundColor: '#dbeafe', overflow: 'hidden' },
+  otaProgressFill:   { height: '100%', backgroundColor: '#1a56db' },
+  otaProgressStatus: { fontSize: 12, color: '#1e40af', marginTop: 4, textTransform: 'capitalize' },
+  otaErrorBox:       { backgroundColor: '#fef2f2', borderRadius: 8, padding: 10, marginVertical: 6 },
+  otaErrorText:      { fontSize: 13, color: '#dc2626' },
+  otaSuccessBox:     { backgroundColor: '#f0fdf4', borderRadius: 8, padding: 10, marginVertical: 6 },
+  otaSuccessText:    { fontSize: 13, color: '#15803d', fontWeight: '500' },
+  otaUpToDate:       { fontSize: 13, color: '#9ca3af' },
 });

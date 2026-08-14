@@ -93,8 +93,10 @@ export default function ControllerDetailScreen() {
   }, [renameZone]);
 
   async function handleTapZone(zoneId: number) {
+    console.log('[handleTapZone] entered, zoneId=', zoneId, 'connected=', connected);
     const zone = zones.find(z => z.id === zoneId);
-    if (!zone) return;
+    if (!zone) { console.log('[handleTapZone] zone not found'); return; }
+    console.log('[handleTapZone] zone status=', zone.status);
 
     if (zone.status === 'idle') {
       if (revealPhoto) closeRevealPhoto();
@@ -387,7 +389,7 @@ export default function ControllerDetailScreen() {
                 <TouchableOpacity
                   key={z.id}
                   activeOpacity={0.7}
-                  onPress={() => connected && handleTapZone(z.id)}
+                  onPress={() => { console.log('[TapZone] onPress fired, zoneId=', z.id, 'connected=', connected); handleTapZone(z.id); }}
                   onLongPress={() => handleLongPressZone(z)}
                   delayLongPress={500}
                   style={[
