@@ -6,7 +6,7 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
-    newArchEnabled: false,
+    newArchEnabled: true,
     splash: {
       image: './assets/splash-icon.png',
       resizeMode: 'contain',
@@ -30,6 +30,9 @@ module.exports = {
     },
     scheme: 'azul',
     plugins: [
+      // Preserves android:usesCleartextTraffic="true" across expo prebuilds
+      // so dev builds can hit http://<lan-ip>:3000. Remove for production.
+      ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
       'expo-web-browser',
       'expo-router',
       'expo-secure-store',

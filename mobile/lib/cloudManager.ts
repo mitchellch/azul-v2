@@ -118,7 +118,6 @@ function ensureSharedSSE() {
   if (!accessToken) return;
   if (sharedRetryTimer) { clearTimeout(sharedRetryTimer); sharedRetryTimer = null; }
 
-  console.log('[cloudManager] opening shared SSE at /devices/stream');
   const es = new EventSource(`${API_URL}/devices/stream`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     lineEndingCharacter: '\n',
@@ -174,12 +173,11 @@ function ensureSharedSSE() {
 function closeSharedSSEIfIdle() {
   if (entries.size > 0) return;
   if (sharedRetryTimer) { clearTimeout(sharedRetryTimer); sharedRetryTimer = null; }
-  if (sharedSSE) { sharedSSE.close(); sharedSSE = null; console.log('[cloudManager] closed shared SSE (no active entries)'); }
+  if (sharedSSE) { sharedSSE.close(); sharedSSE = null; }
 }
 
 async function load(e: Entry) {
   if (e.stopped) return;
-  console.log(`[cloudManager] load(${e.mac}) — fetching device status`);
   setState(e, { connecting: true, connected: false });
   try {
     const abort = new AbortController();
@@ -191,7 +189,6 @@ async function load(e: Entry) {
       clearTimeout(timer);
     }
     if (e.stopped) return;
-    console.log(`[cloudManager] load(${e.mac}) — success, ${Array.isArray(d.zones) ? d.zones.length : 0} zones`);
 
     emitStatus(e, {
       firmware:                d.firmware       ?? undefined,

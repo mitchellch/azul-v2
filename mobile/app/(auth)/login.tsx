@@ -19,7 +19,6 @@ export default function LoginScreen() {
       useControllerStore
         .getState()
         .hydrateFromServer((userInfo as any).sub)
-        .then((r) => console.log('[hydrate] added=', r.added, 'existing=', r.existing))
         .catch((e) => console.warn('[hydrate] failed:', e?.message ?? e));
     } catch (e: any) {
       if (e?.error !== 'a0.session.user_cancelled') {

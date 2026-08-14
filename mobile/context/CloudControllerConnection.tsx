@@ -18,15 +18,8 @@ export function CloudControllerConnectionProvider({ mac, ownerSub, children }: P
   // Ensure cloud connection is active — reload if not yet connected
   useEffect(() => {
     const state = cloudManager.getState(mac);
-    console.log(`[CloudProvider] mount mac=${mac} state=${JSON.stringify(state)}`);
-    if (!state.connected && !state.connecting) {
-      console.log(`[CloudProvider] calling reload(${mac})`);
-      cloudManager.reload(mac);
-    } else if (!state.connected) {
-      console.log(`[CloudProvider] already connecting, waiting...`);
-    } else {
-      cloudManager.start(mac);
-    }
+    if (!state.connected && !state.connecting) cloudManager.reload(mac);
+    else if (state.connected) cloudManager.start(mac);
   }, [mac]);
 
   // Subscribe to connection state with auto-retry on failure

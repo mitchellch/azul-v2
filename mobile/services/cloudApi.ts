@@ -6,34 +6,15 @@ async function authFetch(path: string, options: RequestInit = {}, signal?: Abort
   const { accessToken, clearSession } = useAuthStore.getState();
   if (!accessToken) throw new Error('Not authenticated');
 
-  const url = `${API_URL}${path}`;
-  const method = options.method ?? 'GET';
-  console.log('[authFetch] →', method, url, 'tokenLen=', accessToken?.length ?? 0);
-
-  // DIAGNOSTIC: 8s timeout via AbortController so we see hang vs slow
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-  const t0 = Date.now();
-  let res;
-  try {
-    res = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'Connection': 'close',
-        ...(options.headers ?? {}),
-      },
-    });
-    clearTimeout(timeoutId);
-  } catch (e: any) {
-    clearTimeout(timeoutId);
-    console.log('[authFetch] ✗', method, url, 'threw after', Date.now() - t0, 'ms:', e?.name, e?.message ?? e);
-    throw e;
-  }
-  console.log('[authFetch] ←', method, url, res.status, 'in', Date.now() - t0, 'ms');
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    signal,
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      ...(options.headers ?? {}),
+    },
+  });
 
   if (res.status === 401) {
     clearSession();
