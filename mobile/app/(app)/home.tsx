@@ -145,7 +145,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           style={[styles.controllerRow, offline && styles.controllerRowOffline]}
           onPress={() => {
-            router.push(`/(app)/controller/${item.id}/schedules` as any);
+            router.push(`/(app)/controller/${item.id}/programs` as any);
           }}
           onLongPress={() => handleLongPress(item)}
           delayLongPress={500}
@@ -163,7 +163,7 @@ export default function HomeScreen() {
               )}
             </View>
             <Text style={styles.controllerSeen}>{formatLastSeen(item.lastSeen)}</Text>
-            {item.paused && <Text style={styles.pausedBadge}>Schedules paused</Text>}
+            {item.paused && <Text style={styles.pausedBadge}>Programs paused</Text>}
           </View>
 
           {isToggling ? (

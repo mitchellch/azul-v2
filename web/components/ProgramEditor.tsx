@@ -16,6 +16,11 @@ export type Program = {
   dayMask: number;
   intervalDays?: number;
   zones: ProgramZone[];
+  // Server-backed fields. Optional so the editor can still stub a blank
+  // program without knowing dates — the page fills these in before persisting.
+  active?: boolean;
+  startDate?: string;   // "YYYY-MM-DD"
+  endDate?: string | null;
 };
 
 type ScheduleRun = {

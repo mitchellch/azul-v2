@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ScheduleEditor, Schedule } from '@/components/ScheduleEditor';
 import { ProgramEditor, Program, expandPrograms, DAY_NAMES, DAY_BITS, formatTime } from '@/components/ProgramEditor';
 import { WeekGlance } from '@/components/WeekGlance';
 import { ColorPicker } from '@/components/ColorPicker';
@@ -79,7 +78,7 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-const TABS = ['Programs', 'Schedules', 'Zones', 'Settings'] as const;
+const TABS = ['Programs', 'Zones', 'Settings'] as const;
 type Tab = typeof TABS[number];
 
 export default function ControllerPage() {
@@ -97,8 +96,6 @@ export default function ControllerPage() {
   const [tab, setTab]             = useState<Tab>(initialTab);
   const zones = useZones(mac as string);
   const ota   = useOta(mac as string);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [editingSchedule, setEditingSchedule] = useState<Schedule | null | 'new'>(null);
   const [programs, setPrograms]   = useState<Program[]>([]);
   const [editingProgram, setEditingProgram] = useState<Program | null | 'new'>(null);
   const [waagOpen, setWaagOpen]   = useState(false);
@@ -133,33 +130,76 @@ export default function ControllerPage() {
 
   useEffect(() => { zoneStream.open(); }, []);
 
-  // Load programs from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`azul-programs-${mac}`);
-      if (stored) setPrograms(JSON.parse(stored));
-    } catch {}
-  }, [mac]);
+  type ServerProgramZone = { zoneNumber: number; durationSeconds: number; order: number };
+  type ServerProgram = {
+    id: string; name: string; dayMask: number; intervalDays: number;
+    startDate: string; endDate: string | null; active: boolean;
+    startTimes: { hour: number; minute: number }[];
+    zones: ServerProgramZone[];
+  };
+  const fromServer = (p: ServerProgram): Program => ({
+    id: p.id, name: p.name, dayMask: p.dayMask,
+    intervalDays: p.intervalDays > 1 ? p.intervalDays : undefined,
+    startDate: p.startDate, endDate: p.endDate, active: p.active,
+    startTimes: p.startTimes,
+    zones: p.zones.map(z => ({ zoneId: z.zoneNumber, durationSeconds: z.durationSeconds, order: z.order })),
+  });
+  const toServerBody = (p: Program) => ({
+    name: p.name,
+    dayMask: p.dayMask,
+    intervalDays: p.intervalDays && p.intervalDays > 1 ? p.intervalDays : 1,
+    startDate: p.startDate ?? new Date().toISOString().slice(0, 10),
+    endDate: p.endDate ?? null,
+    active: p.active ?? false,
+    startTimes: p.startTimes.map(s => ({ hour: s.hour, minute: s.minute })),
+    zones: p.zones.map(z => ({ zoneNumber: z.zoneId, durationSeconds: z.durationSeconds, order: z.order })),
+  });
 
-  function savePrograms(updated: Program[]) {
-    setPrograms(updated);
-    localStorage.setItem(`azul-programs-${mac}`, JSON.stringify(updated));
+  async function reloadPrograms() {
+    const list = (await apiFetch(`/devices/${mac}/programs`)) as ServerProgram[];
+    setPrograms(list.map(fromServer));
   }
 
-  async function syncProgramsToSchedule(progs: Program[]) {
-    const runs = expandPrograms(progs);
-    const activeSchedule = schedules.find(s => s.active);
-    if (!activeSchedule) return;
-    const updated = { ...activeSchedule, runs };
-    await saveSchedule(updated);
+  async function savePrograms(p: Program) {
+    const isNew = !programs.some(x => x.id === p.id);
+    const url = isNew
+      ? `/api/proxy/devices/${mac}/programs`
+      : `/api/proxy/devices/${mac}/programs/${p.id}`;
+    const res = await fetch(url, {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(toServerBody(p)),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Save failed (${res.status})`);
+    }
+    await reloadPrograms();
   }
 
-  // Load device metadata and schedules (not zone state — that comes from zoneStream)
+  async function deleteProgram(id: string) {
+    const res = await fetch(`/api/proxy/devices/${mac}/programs/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+    await reloadPrograms();
+  }
+
+  async function toggleProgramActive(p: Program) {
+    const path = p.active ? 'deactivate' : 'activate';
+    const res = await fetch(`/api/proxy/devices/${mac}/programs/${p.id}/${path}`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ?? `Toggle failed (${res.status})`);
+      return;
+    }
+    await reloadPrograms();
+  }
+
+  // Load device metadata and programs (not zone state — that comes from zoneStream)
   useEffect(() => {
     Promise.all([
       apiFetch(`/devices/${mac}`),
-      apiFetch(`/devices/${mac}/schedules`),
-    ]).then(([device, s]) => {
+      apiFetch(`/devices/${mac}/programs`),
+    ]).then(([device, p]) => {
       // Seed from server response if the stream hasn't received data yet
       if (Array.isArray(device.zones)) {
         zoneStream.seed(mac as string, device.zones.map((z: any) => ({
@@ -177,7 +217,7 @@ export default function ControllerPage() {
       setZoneColors(Object.fromEntries(
         (device.zones ?? []).map((z: any) => [z.number, z.color ?? null])
       ));
-      setSchedules(s);
+      setPrograms((p as ServerProgram[]).map(fromServer));
       setDeviceName(device.name ?? '');
       setNameEdit(device.name ?? '');
       setDeviceStatus({
@@ -214,9 +254,8 @@ export default function ControllerPage() {
   function stopZone(number: number) {
     const zone = zones.find(z => z.number === number);
     if (zone?.source === 'scheduler') {
-      const activeSchedule = schedules.find(s => s.active);
-      const prog = programs.find(pr => pr.zones.some(z => z.zoneId === number));
-      const scheduleName = prog?.name ?? activeSchedule?.name ?? 'a schedule';
+      const prog = programs.find(pr => pr.active && pr.zones.some(z => z.zoneId === number));
+      const scheduleName = prog?.name ?? 'a program';
       setConfirmStop({ number, name: zone.name || `Zone ${number}`, scheduleName });
       return;
     }
@@ -231,41 +270,6 @@ export default function ControllerPage() {
   async function stopAll() {
     zones.forEach(z => zoneStream.patch(mac as string, z.number, 'idle', 0));
     await fetch(`/api/proxy/devices/${mac}/zones/stop-all`, { method: 'POST' });
-  }
-
-  async function saveSchedule(s: Schedule) {
-    const method = s.uuid ? 'PUT' : 'POST';
-    const url = s.uuid
-      ? `/api/proxy/devices/${mac}/schedules/${s.uuid}`
-      : `/api/proxy/devices/${mac}/schedules`;
-    const res = await fetch(url, {
-      method, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(s),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error ?? `Save failed (${res.status})`);
-    }
-    const updated = await apiFetch(`/devices/${mac}/schedules`);
-    setSchedules(updated);
-    setEditingSchedule(null);
-  }
-
-  async function deleteSchedule(uuid: string) {
-    if (!confirm('Delete this schedule? This cannot be undone.')) return;
-    await fetch(`/api/proxy/devices/${mac}/schedules/${uuid}`, { method: 'DELETE' });
-    const updated = await apiFetch(`/devices/${mac}/schedules`);
-    setSchedules(updated);
-  }
-
-  async function toggleScheduleActive(s: Schedule) {
-    if (s.active) {
-      await fetch(`/api/proxy/devices/${mac}/schedules/deactivate`, { method: 'POST' });
-    } else {
-      await fetch(`/api/proxy/devices/${mac}/schedules/${s.uuid}/activate`, { method: 'POST' });
-    }
-    const updated = await apiFetch(`/devices/${mac}/schedules`);
-    setSchedules(updated);
   }
 
   async function loadLogs() {
@@ -323,9 +327,11 @@ export default function ControllerPage() {
     e.target.value = '';
   }
 
-  function isInDateRange(s: Schedule): boolean {
-    const today = new Date().toISOString().split('T')[0];
-    return today >= s.start_date && (!s.end_date || today <= s.end_date);
+  function programInWindow(p: Program): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    const startOk = !p.startDate || today >= p.startDate;
+    const endOk   = !p.endDate   || today <= p.endDate;
+    return startOk && endOk;
   }
 
   const anyRunning = zones.some(z => z.status === 'running' || z.status === 'pending');
@@ -379,26 +385,18 @@ export default function ControllerPage() {
             <ProgramEditor
               program={editingProgram === 'new' ? undefined : editingProgram}
               zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
-              onSave={(p) => {
-                const existing = programs.findIndex(x => x.id === p.id);
-                const updated = existing >= 0
-                  ? programs.map((x, i) => i === existing ? p : x)
-                  : [...programs, p];
-                savePrograms(updated);
-                syncProgramsToSchedule(updated);
-                setEditingProgram(null);
+              onSave={async (p) => {
+                try {
+                  await savePrograms(p);
+                  setEditingProgram(null);
+                } catch (e: any) {
+                  alert(e.message ?? 'Save failed');
+                }
               }}
               onCancel={() => setEditingProgram(null)}
             />
           ) : (
             <>
-              {!schedules.some(s => s.active) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-4 text-sm text-amber-800">
-                  <p className="font-medium">No active schedule</p>
-                  <p className="mt-1">Programs need an active schedule to sync to. Create and activate a schedule in the Schedules tab first.</p>
-                </div>
-              )}
-
               <div className="flex justify-end mb-4">
                 <button
                   onClick={() => setEditingProgram('new')}
@@ -422,8 +420,11 @@ export default function ControllerPage() {
               ) : (
                 <div className="space-y-3">
                   {programs.map(prog => {
-                    const dayLabels = DAY_NAMES.filter((_, i) => (prog.dayMask & DAY_BITS[i]) !== 0).join(', ');
+                    const dayLabels = prog.intervalDays && prog.intervalDays > 1
+                      ? `Every ${prog.intervalDays} days`
+                      : DAY_NAMES.filter((_, i) => (prog.dayMask & DAY_BITS[i]) !== 0).join(', ');
                     const timeLabels = prog.startTimes.map(t => formatTime(t.hour, t.minute)).join(', ');
+                    const inWindow = programInWindow(prog);
                     return (
                       <div key={prog.id}
                         onClick={() => setEditingProgram(prog)}
@@ -437,16 +438,27 @@ export default function ControllerPage() {
                             </p>
                             <p className="text-xs text-gray-400 mt-0.5">{dayLabels}</p>
                           </div>
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              if (!confirm(`Delete program "${prog.name}"?`)) return;
-                              const updated = programs.filter(x => x.id !== prog.id);
-                              savePrograms(updated);
-                              syncProgramsToSchedule(updated);
-                            }}
-                            className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
-                          >🗑</button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleProgramActive(prog); }}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
+                                prog.active && inWindow
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : prog.active
+                                  ? 'bg-blue-50 text-blue-500 hover:bg-blue-100'
+                                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                              }`}>
+                              {prog.active && inWindow ? '● Running' : prog.active ? '● Enabled' : '○ Disabled'}
+                            </button>
+                            <button
+                              onClick={async e => {
+                                e.stopPropagation();
+                                if (!confirm(`Delete program "${prog.name}"?`)) return;
+                                try { await deleteProgram(prog.id); } catch (err: any) { alert(err.message ?? 'Delete failed'); }
+                              }}
+                              className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
+                            >🗑</button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -454,12 +466,29 @@ export default function ControllerPage() {
                 </div>
               )}
 
+              {programs.some(p => p.active && programInWindow(p)) && (
+                <div className="mt-4 bg-white rounded-xl shadow-sm p-4">
+                  <button
+                    onClick={() => setWaagOpen(!waagOpen)}
+                    className="text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                    {waagOpen ? '▾' : '▸'} Week at a Glance
+                  </button>
+                  {waagOpen && (
+                    <div className="mt-2">
+                      <WeekGlance
+                        runs={expandPrograms(programs.filter(p => p.active && programInWindow(p)))}
+                        zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {programs.length > 0 && (
                 <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
                   <p className="font-semibold">How Programs Work</p>
                   <p>Each program runs its zones sequentially at the specified start times on the selected days.</p>
-                  <p>Programs are expanded into individual zone runs and synced to the active schedule on the controller.</p>
-                  <p><strong>{expandPrograms(programs).length}</strong> of <strong>48</strong> run slots used.</p>
+                  <p>Enable a program to have the controller run it automatically. <strong>{expandPrograms(programs.filter(p => p.active)).length}</strong> of <strong>48</strong> run slots used across enabled programs.</p>
                 </div>
               )}
             </>
@@ -652,99 +681,6 @@ export default function ControllerPage() {
             );
           })()}
         </>
-      )}
-
-      {/* ── Schedules tab ── */}
-      {tab === 'Schedules' && (
-        <div>
-          {editingSchedule !== null ? (
-            <ScheduleEditor
-              schedule={editingSchedule === 'new' ? undefined : editingSchedule}
-              zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
-              onSave={saveSchedule}
-              onCancel={() => setEditingSchedule(null)}
-            />
-          ) : (
-            <>
-              <div className="flex justify-end mb-4">
-                <button onClick={() => setEditingSchedule('new')}
-                  disabled={schedules.length >= 5}
-                  className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                    schedules.length >= 5
-                      ? 'bg-gray-100 text-gray-400 cursor-default'
-                      : 'bg-[#1a56db] text-white hover:bg-blue-700'
-                  }`}>
-                  {schedules.length >= 5 ? 'Schedule limit reached (5/5)' : '+ New Schedule'}
-                </button>
-              </div>
-              <div className="space-y-3">
-                {schedules.length === 0 && (
-                  <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-                    <p className="text-gray-600 font-medium mb-1">No schedules yet.</p>
-                    <p className="text-gray-400 text-sm mb-4">Schedules created on the mobile app sync here automatically.</p>
-                    <button onClick={() => setEditingSchedule('new')}
-                      className="text-[#1a56db] text-sm font-semibold hover:underline">
-                      Create your first schedule →
-                    </button>
-                  </div>
-                )}
-                {schedules.map(s => (
-                  <div key={s.uuid}
-                    onClick={() => setEditingSchedule(s)}
-                    className="bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0 mr-4">
-                        <p className="font-semibold text-gray-900">{s.name}</p>
-                        <p className="text-sm text-gray-400 mt-0.5">
-                          {s.start_date} → {s.end_date ?? 'open-ended'}
-                          {' · '}{(s.runs as unknown[]).length} zone schedule{(s.runs as unknown[]).length !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleScheduleActive(s); }}
-                          className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
-                            s.active && isInDateRange(s)
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : s.active
-                              ? 'bg-blue-50 text-blue-500 hover:bg-blue-100'
-                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-                          }`}>
-                          {s.active && isInDateRange(s) ? '● Running' : s.active ? '● Enabled' : '○ Disabled'}
-                        </button>
-                        <button onClick={e => { e.stopPropagation(); deleteSchedule(s.uuid!); }}
-                          className="text-xs text-red-400 hover:text-red-600 px-2 py-1">🗑</button>
-                      </div>
-                    </div>
-                    {s.active && (
-                      <div className="mt-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => setWaagOpen(!waagOpen)}
-                          className="text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
-                          {waagOpen ? '▾' : '▸'} Week at a Glance
-                        </button>
-                        {waagOpen && (
-                          <div className="mt-2">
-                            <WeekGlance
-                              runs={s.runs}
-                              zoneNames={Object.fromEntries(zones.map(z => [z.number, z.name || `Zone ${z.number}`]))}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 text-sm text-blue-900 space-y-1.5">
-                <p className="font-semibold">About Schedules</p>
-                <p>The active schedule is determined by today's date — whichever schedule's date range includes today runs automatically.</p>
-                <p>Up to <strong>5 schedules</strong> per controller, <strong>24 zone entries</strong> each. Date ranges must not overlap.</p>
-              </div>
-            </>
-          )}
-        </div>
       )}
 
       {/* ── Settings tab ── */}

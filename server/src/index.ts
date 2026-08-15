@@ -17,6 +17,15 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors());
 app.use(express.json());
 
+// Lightweight request logger — one line per API call.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`[HTTP] ${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
+
 // Serve uploaded zone photos
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 

@@ -123,8 +123,8 @@ export default function ControllerDetailScreen() {
     } else {
       if (zone.source === 'scheduler' && !ctrl?.skipScheduleStopConfirm) {
         Alert.alert(
-          'Zone Running on Schedule',
-          `${zone.name} is running as part of a schedule. Stop it?`,
+          'Zone Running on Program',
+          `${zone.name} is running as part of a program. Stop it?`,
           [
             { text: 'Cancel', style: 'cancel' },
             {

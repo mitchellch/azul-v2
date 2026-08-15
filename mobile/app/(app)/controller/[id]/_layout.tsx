@@ -9,16 +9,16 @@ import { CloudControllerConnectionProvider } from '@/context/CloudControllerConn
 import { getConnectionStatus } from '@/services/cloudApi';
 
 // Import screen components directly so they render inside the pager
-import SchedulesScreen from './schedules';
+import ProgramsScreen from './programs';
 import ManualScreen from './index';
 import SettingsScreen from './settings';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
 const TABS = [
-  { label: 'Schedules', component: SchedulesScreen },
-  { label: 'Zones',     component: ManualScreen },
-  { label: 'Settings',  component: SettingsScreen },
+  { label: 'Programs', component: ProgramsScreen },
+  { label: 'Zones',    component: ManualScreen },
+  { label: 'Settings', component: SettingsScreen },
 ] as const;
 
 const INITIAL_PAGE = 1; // Manual tab

@@ -6,6 +6,7 @@ import { zonesRouter } from './handlers/zones';
 import { logsRouter } from './handlers/logs';
 import { eventsRouter } from './handlers/events';
 import { schedulesRouter } from './handlers/schedules';
+import { programsRouter } from './handlers/programs';
 import { orgsRouter } from './handlers/orgs';
 import { firmwareRouter } from './handlers/firmware';
 
@@ -20,5 +21,6 @@ router.use('/devices', zonesRouter);
 router.use('/devices', logsRouter);
 router.use('/devices', eventsRouter);
 router.use('/devices/:mac/schedules', schedulesRouter);
+router.use('/devices/:mac/programs',  programsRouter);
 router.use('/orgs', orgsRouter);
 router.use('/admin/firmware', firmwareRouter);

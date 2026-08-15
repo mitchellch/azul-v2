@@ -2,10 +2,11 @@ import { useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Ctx } from '@/context/ControllerConnection';
 import {
   startZone, stopZone, stopAllZones,
-  getSchedules, getActiveSchedule, createSchedule, updateSchedule,
-  deleteSchedule, activateSchedule, deactivateSchedule,
+  getPrograms, createProgram, updateProgram,
+  deleteProgram, activateProgram, deactivateProgram,
   updateZoneName,
 } from '@/services/cloudApi';
+import type { ProgramPayload } from '@/services/cloudApi';
 import { useControllerStore } from '@/store/controllers';
 import { controllerStore } from '@/lib/controllerStore';
 import { cloudManager, markOptimistic } from '@/lib/cloudManager';
@@ -70,29 +71,27 @@ export function CloudControllerConnectionProvider({ mac, ownerSub, children }: P
       case 'stop_all':
         await stopAllZones(mac);
         return { ok: true };
-      case 'get_schedules':
-        return getSchedules(mac);
-      case 'get_active_schedule':
-        return getActiveSchedule(mac);
-      case 'create_schedule': {
-        const d = data as any;
-        return createSchedule(mac, d);
+      case 'get_programs':
+        return getPrograms(mac);
+      case 'create_program':
+        return createProgram(mac, data as ProgramPayload);
+      case 'update_program': {
+        const d = data as ProgramPayload & { id: string };
+        return updateProgram(mac, d.id, d);
       }
-      case 'update_schedule': {
-        const d = data as any;
-        return updateSchedule(mac, d.uuid, d);
-      }
-      case 'delete_schedule': {
-        const d = data as any;
-        await deleteSchedule(mac, d.uuid);
+      case 'delete_program': {
+        const d = data as { id: string };
+        await deleteProgram(mac, d.id);
         return { ok: true };
       }
-      case 'activate_schedule': {
-        const d = data as any;
-        return activateSchedule(mac, d.uuid);
+      case 'activate_program': {
+        const d = data as { id: string };
+        return activateProgram(mac, d.id);
       }
-      case 'deactivate_schedule':
-        return deactivateSchedule(mac);
+      case 'deactivate_program': {
+        const d = data as { id: string };
+        return deactivateProgram(mac, d.id);
+      }
       case 'update_zone': {
         const d = data as any;
         await updateZoneName(mac, d.id, d.name);

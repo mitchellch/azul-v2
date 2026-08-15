@@ -90,6 +90,7 @@ model Device {
   org          Organization? @relation(fields: [orgId], references: [id])
   zones        Zone[]
   schedules    Schedule[]
+  programs     Program[]
   auditLog     AuditLog[]
   eventLog     EventLog[]
   otaStatuses  DeviceOtaStatus[]
@@ -153,6 +154,61 @@ model ScheduleRun {
   zone     Zone?    @relation(fields: [zoneId], references: [id])
 
   @@map("schedule_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Programs (user-facing scheduling primitive)
+//
+// A program is one cycle: "at these start times on these days, run these
+// zones in order." Multiple programs can be active on a device at once; the
+// server flattens all active-and-in-window programs into a synthetic
+// Schedule + ScheduleRun payload for the firmware, which knows nothing about
+// programs. See lib/programCompiler.ts.
+// ---------------------------------------------------------------------------
+
+model Program {
+  id           String   @id @default(uuid())
+  deviceId     String   @map("device_id")
+  name         String
+  dayMask      Int      @map("day_mask")
+  intervalDays Int      @default(1) @map("interval_days")
+  startDate    String   @map("start_date")   // "YYYY-MM-DD"
+  endDate      String?  @map("end_date")
+  active       Boolean  @default(false)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  device     Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  startTimes ProgramStartTime[]
+  zones      ProgramZone[]
+
+  @@index([deviceId, active])
+  @@map("programs")
+}
+
+model ProgramStartTime {
+  id        String @id @default(uuid())
+  programId String @map("program_id")
+  hour      Int
+  minute    Int
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([programId])
+  @@map("program_start_times")
+}
+
+model ProgramZone {
+  id              String @id @default(uuid())
+  programId       String @map("program_id")
+  zoneNumber      Int    @map("zone_number")
+  durationSeconds Int    @map("duration_seconds")
+  order           Int                                  // execution order within a start time cycle
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([programId])
+  @@map("program_zones")
 }
 
 // ---------------------------------------------------------------------------

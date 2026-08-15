@@ -35,9 +35,6 @@ export type ServerDevice = {
   name: string | null;
   createdAt: string;
   lastSeenAt: string | null;
-  hasActiveSchedule?: boolean;
-  activeScheduleUuid?: string | null;
-  scheduleCount?: number;
 };
 
 export async function fetchDevices(): Promise<ServerDevice[]> {
@@ -159,45 +156,49 @@ export async function stopAllZones(mac: string): Promise<void> {
   await authFetch(`/devices/${mac}/zones/stop-all`, { method: 'POST' });
 }
 
-// Schedules
-export async function getSchedules(mac: string): Promise<unknown[]> {
-  return authFetch(`/devices/${mac}/schedules`);
+// Programs — user-facing scheduling. Server compiles active programs into a
+// synthetic Schedule for the firmware, so the mobile app never touches
+// Schedule endpoints directly.
+export type ProgramPayload = {
+  id?:          string;
+  name:         string;
+  dayMask:      number;
+  intervalDays: number;
+  startDate:    string;
+  endDate:      string | null;
+  active:       boolean;
+  startTimes:   { hour: number; minute: number }[];
+  zones:        { zoneNumber: number; durationSeconds: number; order: number }[];
+};
+
+export async function getPrograms(mac: string): Promise<ProgramPayload[]> {
+  return authFetch(`/devices/${mac}/programs`);
 }
 
-export async function getActiveSchedule(mac: string): Promise<unknown> {
-  const { accessToken, clearSession } = useAuthStore.getState();
-  if (!accessToken) throw new Error('Not authenticated');
-  const res = await fetch(`${API_URL}/devices/${mac}/schedules/active`, {
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-  });
-  if (res.status === 401) { clearSession(); throw new Error('Session expired'); }
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
-}
-
-export async function createSchedule(mac: string, schedule: object): Promise<unknown> {
-  return authFetch(`/devices/${mac}/schedules`, {
+export async function createProgram(mac: string, program: ProgramPayload): Promise<ProgramPayload> {
+  const { id: _drop, ...body } = program;
+  return authFetch(`/devices/${mac}/programs`, {
     method: 'POST',
-    body: JSON.stringify(schedule),
+    body: JSON.stringify(body),
   });
 }
 
-export async function updateSchedule(mac: string, uuid: string, schedule: object): Promise<unknown> {
-  return authFetch(`/devices/${mac}/schedules/${uuid}`, {
+export async function updateProgram(mac: string, id: string, program: ProgramPayload): Promise<ProgramPayload> {
+  const { id: _drop, ...body } = program;
+  return authFetch(`/devices/${mac}/programs/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(schedule),
+    body: JSON.stringify(body),
   });
 }
 
-export async function deleteSchedule(mac: string, uuid: string): Promise<void> {
-  await authFetch(`/devices/${mac}/schedules/${uuid}`, { method: 'DELETE' });
+export async function deleteProgram(mac: string, id: string): Promise<void> {
+  await authFetch(`/devices/${mac}/programs/${id}`, { method: 'DELETE' });
 }
 
-export async function activateSchedule(mac: string, uuid: string): Promise<unknown> {
-  return authFetch(`/devices/${mac}/schedules/${uuid}/activate`, { method: 'POST' });
+export async function activateProgram(mac: string, id: string): Promise<ProgramPayload> {
+  return authFetch(`/devices/${mac}/programs/${id}/activate`, { method: 'POST' });
 }
 
-export async function deactivateSchedule(mac: string): Promise<unknown> {
-  return authFetch(`/devices/${mac}/schedules/deactivate`, { method: 'POST' });
+export async function deactivateProgram(mac: string, id: string): Promise<ProgramPayload> {
+  return authFetch(`/devices/${mac}/programs/${id}/deactivate`, { method: 'POST' });
 }

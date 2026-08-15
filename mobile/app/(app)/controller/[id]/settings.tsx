@@ -707,7 +707,7 @@ export default function SettingsScreen() {
                 <StatRow label="Temperature" value={`${status.temperature_c.toFixed(1)}°C  /  ${status.temperature_f.toFixed(1)}°F`} />
                 <StatRow label="Uptime"      value={formatUptime(status.uptime_seconds)} />
                 <StatRow label="NTP"         value={status.ntp_synced ? 'Synced' : 'Not synced'} />
-                <StatRow label="Schedule"    value={status.active_schedule_name ?? 'None'} last />
+                <StatRow label="Program"     value={status.active_schedule_name ?? 'None'} last />
                 <TouchableOpacity style={[styles.actionBtn, loading && styles.actionBtnDisabled, { marginTop: 14 }]} onPress={() => { loadedRef.current = false; load(); }} disabled={loading}>
                   {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>Refresh</Text>}
                 </TouchableOpacity>
