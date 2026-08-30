@@ -1,19 +1,18 @@
 #pragma once
 #include <Arduino.h>
 #include "ZoneController.h"
+#include "BoardPins.h"
 
-// Temporary zone activity indicator using the ESP32-S3-DevKitC-1 onboard
-// WS2812 RGB LED (GPIO 48). Each zone maps to a color; the active zone's
+// Zone activity indicator on the board's WS2812 RGB LED. The pin is
+// selected by board variant in BoardPins.h (GPIO 48 on the dev kit,
+// GPIO 21 on rev2 PCBs). Each zone maps to a color; the active zone's
 // color flashes at half intensity. When no zone is active the LED is off.
 //
 // Zone → Color mapping:
 //   1 = White   2 = Red     3 = Orange  4 = Yellow
 //   5 = Green   6 = Blue    7 = Indigo  8 = Violet
-//
-// To remove: delete this file, ZoneLed.cpp, and the two lines in main.cpp.
-// Nothing else in the codebase references ZoneLed.
+//   9 = Pink   10 = Cyan   11 = Lime   12 = Magenta
 
-#define ZONE_LED_PIN  48
 #define ZONE_LED_HALF 32   // reduced intensity (0-255)
 #define ZONE_LED_FLASH_MS 500
 

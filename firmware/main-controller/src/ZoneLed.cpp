@@ -1,7 +1,7 @@
 #include "ZoneLed.h"
 #include <Adafruit_NeoPixel.h>
 
-static Adafruit_NeoPixel pixel(1, ZONE_LED_PIN, NEO_GRB + NEO_KHZ800);
+static Adafruit_NeoPixel pixel(1, STATUS_LED_GPIO, NEO_GRB + NEO_KHZ800);
 
 ZoneLed::ZoneLed(ZoneController& zones)
     : _zones(zones), _lastFlash(0), _ledOn(false) {}
