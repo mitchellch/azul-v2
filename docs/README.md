@@ -19,6 +19,7 @@
 ## Hardware
 - [Main Controller BOM](hardware/main-controller-bom.md) — bill of materials for the mains-powered controller
 - [Zone Extender BOM](hardware/zone-extender-bom.md) — bill of materials for the Zone Extender
+- [Rev2 Bring-Up Procedure](hardware/rev2-bring-up.md) — bench-side incremental power-up, firmware flash, zone verify (print for bench use)
 
 ## Requirements
 - [Product Requirements Document](requirements/prd.md) — functional and non-functional requirements

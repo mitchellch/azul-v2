@@ -5,7 +5,7 @@
      font-family="Arial, Helvetica, sans-serif">
 
   <title>Azul main-controller-v1 enclosure drill template</title>
-  <desc>Polycase WP-24BF*15 long-wall drill template. v4 2026-07-13 (left tab shortened to clear 6.5 mm flange). Print at 100% actual size (Letter or A4, LANDSCAPE). Verify 100 mm calibration line with calipers before drilling.</desc>
+  <desc>Polycase WP-24BF*15 long-wall drill template. v6 2026-08-25 (Hole B at X=98: closest to center that clears both the SSR on the interior AND the Bay 2/3 rib pair for locking-nut swing. Rib zone ~85.4 ± 2.5 mm; assumed 17 mm nut OD with 1.5 mm wrench margin). Print at 100% actual size (Letter or A4, LANDSCAPE). Verify 100 mm calibration line with calipers before drilling.</desc>
 
   <!--
     Coordinate map (SVG units = mm; viewBox in mm):
@@ -14,7 +14,7 @@
       Bottom fold tab: SVG (35, 59) to (205.79, 74), 15 mm tall — wraps under base flange
       Left fold tab:   SVG (20, 20) to (35, 52.5), 15 mm wide × 32.5 mm tall — clears 6.5 mm (0.256") flange on adjacent short wall
       Hole A (gland, 20 mm dia)  at wall (64.15, 19.5) -> SVG (99.15, 39.5)  · Bay 2 midpoint
-      Hole B (barrel, 12 mm dia) at wall (106.65, 19.5) -> SVG (141.65, 39.5) · Bay 3 midpoint
+      Hole B (barrel, 12 mm dia) at wall (98.0, 19.5)  -> SVG (133.0, 39.5)  · Bay 3, tightest safe position clearing SSR + Bay 2/3 rib pair
       Centerline at wall X=85.4 (long-wall midpoint)   -> SVG x=120.4
   -->
 
@@ -89,24 +89,24 @@
     X 64.15  Y 19.5
   </text>
 
-  <!-- ===== Hole B: Barrel jack (12.0 mm Ø) — RIGHT, Bay 3 midpoint ===== -->
-  <circle cx="141.65" cy="39.5" r="6"
+  <!-- ===== Hole B: Barrel jack (12.0 mm Ø) — Bay 3, tightest safe position ===== -->
+  <circle cx="133.0" cy="39.5" r="6"
           fill="none" stroke="black" stroke-width="0.4"/>
-  <line x1="133.65" y1="39.5" x2="149.65" y2="39.5"
+  <line x1="125.0" y1="39.5" x2="141.0" y2="39.5"
         stroke="black" stroke-width="0.3"/>
-  <line x1="141.65" y1="31.5" x2="141.65" y2="47.5"
+  <line x1="133.0" y1="31.5" x2="133.0" y2="47.5"
         stroke="black" stroke-width="0.3"/>
-  <circle cx="141.65" cy="39.5" r="0.2" fill="black"/>
+  <circle cx="133.0" cy="39.5" r="0.2" fill="black"/>
   <!-- Labels above ring, inside wall face -->
-  <text x="141.65" y="25.5" font-size="2.5" text-anchor="middle" font-weight="bold">
+  <text x="133.0" y="25.5" font-size="2.5" text-anchor="middle" font-weight="bold">
     HOLE B
   </text>
-  <text x="141.65" y="28.5" font-size="2" text-anchor="middle">
+  <text x="133.0" y="28.5" font-size="2" text-anchor="middle">
     12.0 mm Ø · barrel jack
   </text>
   <!-- Coordinate label inside bottom fold tab -->
-  <text x="141.65" y="66" font-size="2" text-anchor="middle">
-    X 106.65  Y 19.5
+  <text x="133.0" y="66" font-size="2" text-anchor="middle">
+    X 98.0  Y 19.5
   </text>
 
   <!-- ===== Datum callouts (outside template — trimmed when cut) ===== -->
@@ -142,7 +142,7 @@
   <!-- ===== Legend / metadata ===== -->
   <g font-size="2.5">
     <text x="20" y="126" font-weight="bold">
-      Azul main-controller-v1 · enclosure drill template · v4 · 2026-07-13
+      Azul main-controller-v1 · enclosure drill template · v6 · 2026-08-25
     </text>
     <text x="20" y="131">
       Enclosure: Polycase WP-24BF*15 · target: long side wall opposite antenna
@@ -154,7 +154,7 @@
       Hole A · 20.0 mm Ø PG13.5 gland · center at (X=64.15, Y=19.5) mm · Bay 2 midpoint
     </text>
     <text x="20" y="143">
-      Hole B · 12.0 mm Ø barrel jack · center at (X=106.65, Y=19.5) mm · Bay 3 midpoint
+      Hole B · 12.0 mm Ø barrel jack · center at (X=98.0, Y=19.5) mm · Bay 3, tightest safe position (clears SSR + Bay 2/3 rib pair for nut swing)
     </text>
     <text x="20" y="147">
       Centerline at wall X=85.4 mm (long-wall midpoint) for pre-adhesive alignment.
