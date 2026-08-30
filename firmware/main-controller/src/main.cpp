@@ -34,7 +34,7 @@ CLI             serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
 StatusIndicator statusLed(zones);
 
 #define BLE_NOTIFY_INTERVAL_MS    5000
-#define WIFI_CHECK_INTERVAL_MS   30000
+#define WIFI_CHECK_INTERVAL_MS   10000
 #define NTP_SYNC_INTERVAL_MS   3600000
 
 #ifdef DEBUG_BUILD

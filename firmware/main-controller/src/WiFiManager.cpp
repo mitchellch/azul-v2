@@ -3,6 +3,32 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
+static void wifiEventHandler(arduino_event_id_t event, arduino_event_info_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Serial.println("[WiFi] STA started");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("[WiFi] Associated (waiting for IP)");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("[WiFi] Connected. IP: %s  RSSI: %d dBm\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+      Serial.println("[WiFi] Lost IP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      // Common reason codes: 2=AUTH_EXPIRE, 4=ASSOC_EXPIRE, 15=4WAY_HANDSHAKE_TIMEOUT,
+      // 200=BEACON_TIMEOUT, 201=NO_AP_FOUND, 202=AUTH_FAIL, 205=CONNECTION_FAIL.
+      Serial.printf("[WiFi] Disconnected (reason=%u)\n",
+                    info.wifi_sta_disconnected.reason);
+      break;
+    default:
+      break;
+  }
+}
+
 bool WiFiManager::begin() {
   char ssid[64] = {0};
   char password[64] = {0};
@@ -13,17 +39,20 @@ bool WiFiManager::begin() {
     return false;
   }
 
+  // Install event handler once so we get state-transition logs without
+  // blocking. Static bool prevents double-registration if begin() is
+  // ever called twice.
+  static bool eventsInstalled = false;
+  if (!eventsInstalled) {
+    WiFi.onEvent(wifiEventHandler);
+    eventsInstalled = true;
+  }
+
   Serial.printf("[WiFi] Connecting to %s (async)...\n", ssid);
   WiFi.mode(WIFI_STA);
-  // Auto-reconnect must be enabled BEFORE begin() so the driver installs its
-  // disconnect handler. Persistent(true) stores creds in NVS so the RTOS-level
-  // wpa_supplicant can also drive reconnect without our involvement.
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
   WiFi.begin(ssid, password);
-  // Non-blocking: return immediately. Main loop polls isConnected() and starts
-  // dependent services (REST/NTP/MQTT) once WL_CONNECTED lands. Keeps the
-  // status LED tick() responsive during connect + reconnect.
   return true;
 }
 
@@ -32,12 +61,20 @@ bool WiFiManager::isConnected() const {
 }
 
 void WiFiManager::reconnectIfNeeded() {
-  // setAutoReconnect(true) handles most disconnects at the driver level. This
-  // is a backstop for cases where auto-reconnect gives up (e.g. AP was gone
-  // long enough for the STA state machine to stop trying). WiFi.reconnect()
-  // is non-blocking: it kicks disconnect+begin() using the last-saved creds.
   if (isConnected()) return;
-  WiFi.reconnect();
+
+  // Fresh WiFi.begin(ssid, pw) instead of WiFi.reconnect() shortcut — the old
+  // blocking code re-kicked with full creds on each 10 s timeout and that's
+  // what eventually got flaky APs to associate. WiFi.reconnect() only reuses
+  // whatever state the driver already has, which sometimes gets stuck.
+  char ssid[64] = {0};
+  char password[64] = {0};
+  loadCredentials(ssid, password);
+  if (strlen(ssid) == 0) return;
+
+  Serial.printf("[WiFi] Re-kicking connect to %s\n", ssid);
+  WiFi.disconnect();
+  WiFi.begin(ssid, password);
 }
 
 String WiFiManager::getIPAddress() const {

@@ -30,6 +30,19 @@ static bool squareOn(unsigned long now, uint32_t on_ms, uint32_t off_ms) {
     return (now % (on_ms + off_ms)) < on_ms;
 }
 
+// Half-sine "breath" pulse: brightness rises from 0 → peak → 0 over pulse_ms,
+// then holds dark until the next period. Softer on the eyes than a square-wave
+// flash, and reads as intentional signaling rather than a fault indicator.
+static uint8_t sinePulse(unsigned long now, uint32_t period_ms,
+                         uint32_t pulse_ms, uint8_t peak) {
+    if (period_ms == 0 || pulse_ms == 0) return 0;
+    uint32_t p = now % period_ms;
+    if (p >= pulse_ms) return 0;
+    float phase = (float)p / (float)pulse_ms;             // 0..1
+    float bump  = sinf(phase * (float)PI);                // 0..1..0
+    return (uint8_t)(bump * (float)peak);
+}
+
 StatusIndicator::StatusIndicator(ZoneController& zones)
     : _zones(zones)
     , _bootPhase(BootPhase::Init)
@@ -121,10 +134,13 @@ void StatusIndicator::tick() {
         return;
     }
 
-    // ── 3. Network errors: slow red pulse ──
+    // ── 3. Network errors: soft red breath ──
+    // Peak brightness 90/255 (down from 180) — the WS2812B is right on the
+    // bench in front of the user during dev and full-power red hurt eyes.
+    // Sine pulse instead of square wave: reads as "attention" not "alarm".
     if (_error == ErrorKind::NoWifi || _error == ErrorKind::NoMqtt) {
-        bool on = squareOn(now, 300, 700);
-        writePixel(on ? 180 : 0, 0, 0);
+        uint8_t br = sinePulse(now, 1000, 400, 90);
+        writePixel(br, 0, 0);
         return;
     }
 
@@ -161,13 +177,12 @@ void StatusIndicator::tick() {
             return;
         }
         case BootPhase::Ready: {
-            // 6. Heartbeat wink: brief 100ms dim flash of Azul blue every 2000ms
-            uint32_t p = now % 2000;
-            if (p < 100) {
-                writePixel(scale(AZUL_R, 40), scale(AZUL_G, 40), scale(AZUL_B, 40));
-            } else {
-                writePixel(0, 0, 0);
-            }
+            // 6. Heartbeat "breath": soft sine bump peaking at 35/255 over
+            // 300ms, then dark for the remainder of a 5000ms cycle. Reads
+            // as a slow, calm exhale — the LED is on the bench and needs to
+            // be liveable, not attention-grabbing.
+            uint8_t br = sinePulse(now, 5000, 300, 35);
+            writePixel(scale(AZUL_R, br), scale(AZUL_G, br), scale(AZUL_B, br));
             return;
         }
     }
