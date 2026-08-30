@@ -3,10 +3,13 @@
 #include <ArduinoJson.h>
 
 class MqttManager;
+class StatusIndicator;
 
 class OtaManager {
 public:
     explicit OtaManager(MqttManager& mqtt);
+
+    void setStatusIndicator(StatusIndicator* s) { _status = s; }
 
     void handleUpdate(const JsonVariant& data);
 
@@ -19,6 +22,7 @@ private:
     void publishError(const char* version, const char* error);
     void publishComplete(const char* version, uint32_t durationMs);
 
-    MqttManager& _mqtt;
-    bool _updating;
+    MqttManager&     _mqtt;
+    bool             _updating;
+    StatusIndicator* _status = nullptr;
 };

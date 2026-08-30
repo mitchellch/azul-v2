@@ -1,5 +1,6 @@
 #include "OtaManager.h"
 #include "MqttManager.h"
+#include "StatusIndicator.h"
 #include <HTTPClient.h>
 #include <Update.h>
 #include <WiFi.h>
@@ -41,8 +42,12 @@ void OtaManager::handleUpdate(const JsonVariant& data) {
     }
 
     _updating = true;
+    if (_status) _status->setOtaPhase(StatusIndicator::OtaPhase::Downloading, 0);
     run(url, sha, version, size);
     _updating = false;
+    // On success run() reboots and never returns; if we get here the update
+    // failed and publishError() has already set the LED error state.
+    if (_status) _status->setOtaPhase(StatusIndicator::OtaPhase::None);
 }
 
 void OtaManager::run(const char* url, const char* expectedSha256Hex,
@@ -171,6 +176,7 @@ void OtaManager::run(const char* url, const char* expectedSha256Hex,
 
 void OtaManager::publishProgress(const char* version, uint8_t percent) {
     Serial.printf("[OTA] %s %u%%\n", version, percent);
+    if (_status) _status->setOtaPhase(StatusIndicator::OtaPhase::Downloading, percent);
     JsonDocument doc;
     JsonObject extra = doc.to<JsonObject>();
     extra["percent"] = percent;
@@ -179,6 +185,7 @@ void OtaManager::publishProgress(const char* version, uint8_t percent) {
 
 void OtaManager::publishError(const char* version, const char* error) {
     Serial.printf("[OTA] ERROR %s: %s\n", version, error);
+    if (_status) _status->setError(StatusIndicator::ErrorKind::OtaFailed);
     JsonDocument doc;
     JsonObject extra = doc.to<JsonObject>();
     extra["error"] = error;
@@ -187,6 +194,7 @@ void OtaManager::publishError(const char* version, const char* error) {
 
 void OtaManager::publishComplete(const char* version, uint32_t durationMs) {
     Serial.printf("[OTA] COMPLETE %s in %u ms\n", version, durationMs);
+    if (_status) _status->setOtaPhase(StatusIndicator::OtaPhase::Verifying, 100);
     JsonDocument doc;
     JsonObject extra = doc.to<JsonObject>();
     extra["duration_ms"] = durationMs;

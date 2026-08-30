@@ -11,7 +11,7 @@
 #include "BleServer.h"
 #include "ClaimManager.h"
 #include "CLI.h"
-#include "ZoneLed.h"
+#include "StatusIndicator.h"
 #include "ZoneQueue.h"
 #include "MqttManager.h"
 #include "OtaManager.h"
@@ -30,8 +30,8 @@ OtaManager     otaManager(mqttManager);
 RestServer     restServer(zones, scheduler, auditLog, changeLog, timeManager, zoneQueue, mqttManager);
 ClaimManager   claimMgr;
 BleServer      bleServer(zones, auditLog, zoneQueue, scheduler, claimMgr, timeManager);
-CLI            serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
-ZoneLed        zoneLed(zones);
+CLI             serialCli(zones, scheduler, auditLog, timeManager, zoneQueue);
+StatusIndicator statusLed(zones);
 
 #define BLE_NOTIFY_INTERVAL_MS    5000
 #define WIFI_CHECK_INTERVAL_MS   30000
@@ -66,6 +66,10 @@ void setup() {
 
   Serial.println("\n[Azul] Main Controller booting...");
 
+  // Bring the status LED up first so users see immediate visual feedback
+  // (dim white breathe) that the MCU is alive, even before subsystems start.
+  statusLed.begin();
+
   // OTA first-boot check — if the running partition is pending verify, arm
   // the timeout that will roll back if MQTT never connects.
   const esp_partition_t* running = esp_ota_get_running_partition();
@@ -86,11 +90,13 @@ void setup() {
   changeLog.begin();
   scheduler.begin();
 
+  statusLed.setBootPhase(StatusIndicator::BootPhase::Wifi);
   wifiManager.begin();
 
   if (wifiManager.isConnected()) {
     restServer.begin();
     restStarted = true;
+    statusLed.setBootPhase(StatusIndicator::BootPhase::Time);
     timeManager.begin();
     ntpStarted = true;
   } else {
@@ -105,13 +111,14 @@ void setup() {
   };
 
   mqttManager.setOtaManager(&otaManager);
+  otaManager.setStatusIndicator(&statusLed);
   if (wifiManager.isConnected()) {
+    statusLed.setBootPhase(StatusIndicator::BootPhase::Mqtt);
     mqttManager.begin();
     mqttStarted = true;
   }
 
   serialCli.begin();
-  zoneLed.begin();
 
   Logger::log("[Azul] Boot complete");
 }
@@ -122,7 +129,7 @@ void loop() {
   zones.tick();
   zoneQueue.tick();
   scheduler.tick();
-  zoneLed.tick();
+  statusLed.tick();
   serialCli.poll();
   bleServer.tick();
   if (mqttStarted) mqttManager.tick();
@@ -133,6 +140,7 @@ void loop() {
       esp_ota_mark_app_valid_cancel_rollback();
       Serial.println("[OTA] New firmware confirmed healthy — rollback canceled");
       otaPendingVerify = false;
+      statusLed.setOtaPhase(StatusIndicator::OtaPhase::None);
     } else if ((int32_t)(now - otaVerifyDeadline) >= 0) {
       Serial.println("[OTA] Verify window expired — rolling back to previous slot");
       esp_ota_mark_app_invalid_rollback_and_reboot();
@@ -172,5 +180,19 @@ void loop() {
   // Periodic NTP re-sync (hourly)
   if (ntpStarted && (now - lastNtpSync >= NTP_SYNC_INTERVAL_MS)) {
     lastNtpSync = now;
+  }
+
+  // Reflect connectivity state on the status LED. Runs every tick so any
+  // WiFi/MQTT drop or recovery is visible within one main-loop iteration.
+  // OtaFailed is sticky (StatusIndicator ignores overrides), so an OTA
+  // failure red blink is never overwritten by a transient MQTT reconnect.
+  if (!wifiManager.isConnected()) {
+    statusLed.setError(StatusIndicator::ErrorKind::NoWifi);
+  } else if (!mqttStarted || !mqttManager.isConnected()) {
+    statusLed.clearError();
+    statusLed.setBootPhase(StatusIndicator::BootPhase::Mqtt);
+  } else {
+    statusLed.clearError();
+    statusLed.setBootPhase(StatusIndicator::BootPhase::Ready);
   }
 }
