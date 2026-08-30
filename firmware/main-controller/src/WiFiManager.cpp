@@ -3,8 +3,6 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
-#define WIFI_CONNECT_TIMEOUT_MS 10000
-
 bool WiFiManager::begin() {
   char ssid[64] = {0};
   char password[64] = {0};
@@ -15,24 +13,17 @@ bool WiFiManager::begin() {
     return false;
   }
 
-  return connect(ssid, password);
-}
-
-bool WiFiManager::connect(const char* ssid, const char* password) {
-  Serial.printf("[WiFi] Connecting to %s...\n", ssid);
+  Serial.printf("[WiFi] Connecting to %s (async)...\n", ssid);
   WiFi.mode(WIFI_STA);
+  // Auto-reconnect must be enabled BEFORE begin() so the driver installs its
+  // disconnect handler. Persistent(true) stores creds in NVS so the RTOS-level
+  // wpa_supplicant can also drive reconnect without our involvement.
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   WiFi.begin(ssid, password);
-
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-      Serial.println("[WiFi] Connection timed out");
-      return false;
-    }
-    delay(250);
-  }
-
-  Serial.printf("[WiFi] Connected. IP: %s\n", WiFi.localIP().toString().c_str());
+  // Non-blocking: return immediately. Main loop polls isConnected() and starts
+  // dependent services (REST/NTP/MQTT) once WL_CONNECTED lands. Keeps the
+  // status LED tick() responsive during connect + reconnect.
   return true;
 }
 
@@ -41,21 +32,12 @@ bool WiFiManager::isConnected() const {
 }
 
 void WiFiManager::reconnectIfNeeded() {
-  if (!isConnected()) {
-    _failCount++;
-    if (_failCount >= 2) {
-      _failCount = 0;
-      // Only attempt if credentials exist
-      char ssid[64] = {0};
-      char password[64] = {0};
-      loadCredentials(ssid, password);
-      if (strlen(ssid) == 0) return;
-      Logger::log("[WiFi] Reconnecting...");
-      connect(ssid, password);
-    }
-  } else {
-    _failCount = 0;
-  }
+  // setAutoReconnect(true) handles most disconnects at the driver level. This
+  // is a backstop for cases where auto-reconnect gives up (e.g. AP was gone
+  // long enough for the STA state machine to stop trying). WiFi.reconnect()
+  // is non-blocking: it kicks disconnect+begin() using the last-saved creds.
+  if (isConnected()) return;
+  WiFi.reconnect();
 }
 
 String WiFiManager::getIPAddress() const {

@@ -92,17 +92,9 @@ void setup() {
 
   statusLed.setBootPhase(StatusIndicator::BootPhase::Wifi);
   wifiManager.begin();
-
-  if (wifiManager.isConnected()) {
-    restServer.begin();
-    restStarted = true;
-    statusLed.setBootPhase(StatusIndicator::BootPhase::Time);
-    timeManager.begin();
-    ntpStarted = true;
-  } else {
-    Serial.println("[REST] Skipping — WiFi not connected. Use CLI to set credentials.");
-    Serial.println("[Time] Skipping NTP — WiFi not connected.");
-  }
+  // WiFi.begin() is async — services that depend on it (REST/NTP/MQTT) are
+  // started from loop() the moment isConnected() flips true. That keeps the
+  // status LED tick() responsive during the initial connect.
 
   bleServer.begin();
 
@@ -112,11 +104,6 @@ void setup() {
 
   mqttManager.setOtaManager(&otaManager);
   otaManager.setStatusIndicator(&statusLed);
-  if (wifiManager.isConnected()) {
-    statusLed.setBootPhase(StatusIndicator::BootPhase::Mqtt);
-    mqttManager.begin();
-    mqttStarted = true;
-  }
 
   serialCli.begin();
 
@@ -158,22 +145,29 @@ void loop() {
     lastMqttStatus = now;
   }
 
+  // Start deferred services the moment WiFi comes up. Cheap (three flag
+  // checks) so it runs every tick instead of gated behind WIFI_CHECK_INTERVAL_MS,
+  // which used to delay first-boot MQTT connect by up to 30 s.
+  if (wifiManager.isConnected()) {
+    if (!restStarted) {
+      restServer.begin();
+      restStarted = true;
+    }
+    if (!ntpStarted) {
+      timeManager.begin();
+      ntpStarted = true;
+    }
+    if (!mqttStarted) {
+      statusLed.setBootPhase(StatusIndicator::BootPhase::Mqtt);
+      mqttManager.begin();
+      mqttStarted = true;
+    }
+  }
+
+  // Backstop reconnect nudge — WiFi.setAutoReconnect(true) handles most
+  // disconnects, but if it gives up we re-kick every 30 s. Non-blocking.
   if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS) {
     wifiManager.reconnectIfNeeded();
-    if (wifiManager.isConnected()) {
-      if (!restStarted) {
-        restServer.begin();
-        restStarted = true;
-      }
-      if (!ntpStarted) {
-        timeManager.begin();
-        ntpStarted = true;
-      }
-      if (!mqttStarted) {
-        mqttManager.begin();
-        mqttStarted = true;
-      }
-    }
     lastWifiCheck = now;
   }
 
