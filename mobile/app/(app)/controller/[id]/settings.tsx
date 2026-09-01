@@ -389,22 +389,24 @@ export default function SettingsScreen() {
           <Text style={styles.rowLabel}>Connection</Text>
           <View style={styles.segmented}>
             {(['ble', 'cloud'] as const).map((m) => {
-              const active = mode === m;
-              const label  = m === 'cloud' ? 'Cloud' : 'Bluetooth';
+              const active   = mode === m;
+              const disabled = m === 'cloud' && !ctrl?.cloudId;
+              const label    = m === 'cloud' ? 'Cloud' : 'Bluetooth';
               return (
                 <TouchableOpacity
                   key={m}
-                  style={[styles.segment, active && styles.segmentActive]}
+                  style={[styles.segment, active && styles.segmentActive, disabled && styles.segmentDisabled]}
+                  disabled={disabled}
                   onPress={() => {
                     if (m === mode) return;
-                    if (m === 'cloud' && !ctrl?.mac) {
-                      Alert.alert('Not Available', 'Register this controller with the cloud first.');
-                      return;
-                    }
                     if (ctrl) updateController(ctrl.deviceId, { connectionMode: m });
                   }}
                 >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+                  <Text style={[
+                    styles.segmentText,
+                    active && styles.segmentTextActive,
+                    disabled && styles.segmentTextDisabled,
+                  ]}>{label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -831,11 +833,13 @@ const styles = StyleSheet.create({
   rowLabel:          { fontSize: 15, color: '#374151', fontWeight: '500', flex: 1, marginRight: 8 },
   rowValue:          { fontSize: 15, color: '#111827', fontWeight: '500' },
   rowRight:          { flexDirection: 'row', alignItems: 'center' },
-  segmented:         { flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 8, padding: 2 },
-  segment:           { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
-  segmentActive:     { backgroundColor: '#1a56db' },
-  segmentText:       { fontSize: 14, color: '#6b7280', fontWeight: '500' },
-  segmentTextActive: { color: '#fff', fontWeight: '600' },
+  segmented:           { flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 8, padding: 2 },
+  segment:             { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
+  segmentActive:       { backgroundColor: '#1a56db' },
+  segmentDisabled:     { opacity: 0.4 },
+  segmentText:         { fontSize: 14, color: '#6b7280', fontWeight: '500' },
+  segmentTextActive:   { color: '#fff', fontWeight: '600' },
+  segmentTextDisabled: { color: '#9ca3af' },
   chevron:           { fontSize: 20, color: '#d1d5db', marginLeft: 6 },
   chevronOpen:       { transform: [{ rotate: '90deg' }] },
   emptyHint:         { fontSize: 13, color: '#9ca3af', paddingVertical: 12 },
