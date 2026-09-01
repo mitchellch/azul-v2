@@ -2,19 +2,50 @@ import { useAuthStore } from '@/store/auth';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function authFetch(path: string, options: RequestInit = {}, signal?: AbortSignal) {
   const { accessToken, clearSession } = useAuthStore.getState();
   if (!accessToken) throw new Error('Not authenticated');
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    signal,
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      ...(options.headers ?? {}),
-    },
-  });
+  const method = options.method ?? 'GET';
+  const started = Date.now();
+  console.log(`[authFetch] → ${method} ${path}`);
+
+  // Compose caller's signal with a hard timeout so a hung OkHttp socket
+  // surfaces as an abort instead of a silent forever-pending Promise.
+  const timeoutCtl = new AbortController();
+  const timer = setTimeout(() => timeoutCtl.abort(), FETCH_TIMEOUT_MS);
+  const cleanupExternal = signal ? (() => timeoutCtl.abort()) : null;
+  if (signal && cleanupExternal) {
+    if (signal.aborted) timeoutCtl.abort();
+    else signal.addEventListener('abort', cleanupExternal);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: timeoutCtl.signal,
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        ...(options.headers ?? {}),
+      },
+    });
+    console.log(`[authFetch] ← ${method} ${path} ${res.status} in ${Date.now() - started}ms`);
+  } catch (err: any) {
+    const ms = Date.now() - started;
+    if (timeoutCtl.signal.aborted && !(signal?.aborted)) {
+      console.error(`[authFetch] ✕ ${method} ${path} TIMEOUT after ${ms}ms`);
+      throw new Error(`Network timeout — ${method} ${path} took >${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    console.error(`[authFetch] ✕ ${method} ${path} in ${ms}ms:`, err?.message ?? err);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (signal && cleanupExternal) signal.removeEventListener('abort', cleanupExternal);
+  }
 
   if (res.status === 401) {
     clearSession();
@@ -23,7 +54,7 @@ async function authFetch(path: string, options: RequestInit = {}, signal?: Abort
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    console.error(`[cloudApi] ${options.method ?? 'GET'} ${path} → ${res.status}`, body);
+    console.error(`[cloudApi] ${method} ${path} → ${res.status}`, body);
     throw new Error(body.error ?? `API error ${res.status}`);
   }
   return res.json();

@@ -1,77 +1,37 @@
-import { useEffect, useRef, ReactNode } from 'react';
-import EventSource from 'react-native-sse';
+import { useEffect, ReactNode } from 'react';
 import { useControllerStore, useCloudGradeStore } from '@/store/controllers';
-import { useAuthStore } from '@/store/auth';
 import { getConnectionStatus } from '@/services/cloudApi';
+import { cloudManager } from '@/lib/cloudManager';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
-
-// Opens one persistent SSE stream per cloud controller so the home screen
-// gets instant offline/online updates via LWT without polling.
+// Tracks per-controller connection grade for the home-screen indicator.
+// Uses cloudManager's SHARED SSE for online/offline transitions (via state
+// subscription) and an initial REST seed for the server's fine-grained grade
+// (good/degraded/poor). Does NOT open its own EventSource streams — doing so
+// would spawn one OkHttp slot per mac and starve the fetch pool (regression
+// of the 2026-08-13 fix — see cloudManager.ts comment on sharedSSE).
 export function CloudGradeMonitor({ children }: { children: ReactNode }) {
-  const controllers     = useControllerStore(s => s.controllers);
-  const updateController = useControllerStore(s => s.updateController);
-  const setGrade        = useCloudGradeStore(s => s.setGrade);
-  const sseRefs         = useRef<Map<string, EventSource>>(new Map());
+  const controllers = useControllerStore(s => s.controllers);
+  const setGrade    = useCloudGradeStore(s => s.setGrade);
 
   useEffect(() => {
     const cloudCtrls = controllers.filter(c => c.connectionMode === 'cloud' && c.mac);
-    const activeIds  = new Set(cloudCtrls.map(c => c.id));
-
-    // Close streams for controllers no longer in cloud mode
-    for (const [id, es] of sseRefs.current) {
-      if (!activeIds.has(id)) { es.close(); sseRefs.current.delete(id); }
-    }
-
-    const { accessToken } = useAuthStore.getState();
-    if (!accessToken) return;
+    const unsubs: Array<() => void> = [];
 
     for (const ctrl of cloudCtrls) {
-      if (sseRefs.current.has(ctrl.id)) continue; // already open
+      const mac = ctrl.mac!;
 
-      // Seed grade from REST immediately
-      getConnectionStatus(ctrl.mac!).then(s => setGrade(ctrl.id, s.grade)).catch(() => {});
+      getConnectionStatus(mac)
+        .then(s => setGrade(ctrl.id, s.grade))
+        .catch(() => { /* offline flip handled by state subscription below */ });
 
-      const es = new EventSource(`${API_URL}/devices/${ctrl.mac}/stream`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const unsubState = cloudManager.subscribeState(mac, (st) => {
+        setGrade(ctrl.id, st.connected ? 'good' : 'offline');
       });
-
-      es.addEventListener('message', (e: any) => {
-        try {
-          const event = JSON.parse(e.data);
-          if (event.type === 'connection') {
-            setGrade(ctrl.id, event.online ? 'good' : 'offline');
-          } else if (event.type === 'status') {
-            setGrade(ctrl.id, 'good');
-          } else if (event.type === 'snapshot' && event.device?.name) {
-            const local = useControllerStore.getState().controllers.find(c => c.id === ctrl.id);
-            if (local && local.name !== event.device.name) {
-              updateController(local.deviceId, { name: event.device.name });
-            }
-          }
-        } catch { /* ignore */ }
-      });
-
-      es.addEventListener('error', () => {
-        // On error, remove so it gets re-opened next render cycle
-        sseRefs.current.delete(ctrl.id);
-      });
-
-      sseRefs.current.set(ctrl.id, es);
+      unsubs.push(unsubState);
     }
 
-    return () => {
-      // Only close streams for controllers that were removed this cycle
-    };
+    return () => { for (const u of unsubs) u(); };
   }, [controllers.map(c => `${c.id}:${c.connectionMode}`).join(',')]);
-
-  // Cleanup all on unmount
-  useEffect(() => {
-    return () => {
-      for (const es of sseRefs.current.values()) es.close();
-      sseRefs.current.clear();
-    };
-  }, []);
 
   return <>{children}</>;
 }

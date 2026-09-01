@@ -18,26 +18,32 @@ function ConnectionStarter() {
   useEffect(() => {
     if (!user || controllers.length === 0) return;
     console.log(`[ConnectionStarter] ${controllers.length} controllers, user=${user.sub?.slice(0,8)}`);
-    for (const ctrl of controllers) {
-      const mac  = ctrl.mac ?? ctrl.deviceId;
-      const mode = ctrl.connectionMode ?? (ctrl.mac ? 'cloud' : 'ble');
-      console.log(`[ConnectionStarter] ${ctrl.name} mac=${mac} mode=${mode}`);
-      if (mode === 'cloud' && mac) {
-        bleManager.stop(mac);
-        cloudManager.start(mac);
-      } else {
-        cloudManager.stop(mac);
-        bleManager.start(mac, ctrl.deviceId, ctrl.ownerSub ?? user.sub ?? '');
+    let cancelled = false;
+    (async () => {
+      // Stagger cloud loads: RN's OkHttp maxRequestsPerHost is 5. Firing N parallel
+      // GETs at boot alongside the shared SSE fills the pool and any hang taints it.
+      for (const ctrl of controllers) {
+        if (cancelled) return;
+        const mac  = ctrl.mac ?? ctrl.deviceId;
+        const mode = ctrl.connectionMode ?? (ctrl.mac ? 'cloud' : 'ble');
+        console.log(`[ConnectionStarter] ${ctrl.name} mac=${mac} mode=${mode}`);
+        if (mode === 'cloud' && mac) {
+          bleManager.stop(mac);
+          cloudManager.start(mac);
+          await new Promise(r => setTimeout(r, 600));
+        } else {
+          cloudManager.stop(mac);
+          bleManager.start(mac, ctrl.deviceId, ctrl.ownerSub ?? user.sub ?? '');
+        }
       }
-    }
-    // Persist auto-promoted modes (won't re-trigger since connectionMode is now set)
-    for (const ctrl of controllers) {
-      if (!ctrl.connectionMode && ctrl.mac) {
-        updateController(ctrl.deviceId, { connectionMode: 'cloud' });
+      for (const ctrl of controllers) {
+        if (!ctrl.connectionMode && ctrl.mac) {
+          updateController(ctrl.deviceId, { connectionMode: 'cloud' });
+        }
       }
-    }
-    // Flush any pending API calls
-    pendingQueue.flush().catch(() => {});
+      pendingQueue.flush().catch(() => {});
+    })();
+    return () => { cancelled = true; };
   }, [user, controllers]);
 
   return null;
