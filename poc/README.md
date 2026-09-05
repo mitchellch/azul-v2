@@ -8,5 +8,5 @@ Milestone tracking for hardware validation and feature implementation.
 | **ble-mobile** | BLE-based mobile control — adoption, config, schedules, logs | [Dashboard](ble-mobile/dashboard.md) |
 | **backend**    | REST API, MQTT bridge, Auth0, schedules, multi-tenant | [Dashboard](backend/dashboard.md) |
 | **ota**        | Over-the-air firmware updates — A/B partitions, MQTT trigger, rollback | [Dashboard](ota/dashboard.md) |
-| **hosting**    | Move server + MQTT + Postgres off laptop onto a home-hosted Raspberry Pi | [Dashboard](hosting/dashboard.md) |
+| **hosting**    | Move server + MQTT + Postgres off laptop onto a home-hosted server | [Dashboard](hosting/dashboard.md) |
 | **rev2**       | Bring up 5× Azul main-controller Rev2 PCBs from JLC delivery | [Dashboard](rev2/dashboard.md) |

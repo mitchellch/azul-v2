@@ -360,7 +360,7 @@ At CLI:
 
 ### 11.2 MQTT
 
-At CLI, point to laptop broker (or Pi once § P6 of pi-hosting-plan is complete):
+At CLI, point to laptop broker (or azul-server once § P6 of home-server-hosting-plan is complete):
 
 ```
 > mqtt-set 192.168.1.153 1883

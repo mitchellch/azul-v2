@@ -1,8 +1,8 @@
-# Raspberry Pi Hosting — Progress Tracker
+# Home Server Hosting — Progress Tracker
 
-**Objective:** Bring the Azul server stack up on a home-hosted Raspberry Pi so mobile + firmware work from anywhere without USB tethering.
+**Objective:** Bring the Azul server stack up on a home-hosted server (`azul-server`) so mobile + firmware work from anywhere without USB tethering.
 
-**Plan:** [pi-hosting-plan.md](../../docs/design/pi-hosting-plan.md)
+**Plan:** [home-server-hosting-plan.md](../../docs/design/home-server-hosting-plan.md)
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Phase | Description | Status | Depends on |
 | :--- | :--- | :--- | :--- |
-| **P1** | Hardware + OS bring-up | ⚪ | — |
+| **P1** | Hardware + OS bring-up | ✅ | — |
 | **P2** | DNS migration to Cloudflare | ⚪ | — (can start anytime) |
 | **P3** | Router config + DDNS | ⚪ | P1, P2 |
 | **P4** | Server stack (Postgres, Mosquitto, Node) | ⚪ | P1 |
@@ -45,12 +45,12 @@
 
 **Target:** ½ day once hardware arrives
 
-- ⚪ Order Pi 5 8GB + PSU + SSD + case + Ethernet cable (~$180)
-- ⚪ Flash Raspberry Pi OS Lite (64-bit) to SSD via Imager
-- ⚪ Imager advanced options: hostname `azul-pi`, SSH enabled, user set, WiFi backup configured
-- ⚪ Boot from SSD (skip SD entirely — Pi 5 supports USB boot out of the box)
-- ⚪ Router: reserve static DHCP lease for Pi's MAC → e.g. `192.168.1.50`
-- ⚪ SSH in, `apt update && apt full-upgrade`, reboot
+- ✅ Acquire fanless x86 mini-PC (Beelink Mini S) + internal SSD + Ethernet cable (~$150)
+- ✅ Install Ubuntu Server 24.04 LTS to the internal SSD
+- ✅ Install options: hostname `azul-server`, OpenSSH enabled, admin user created, Ethernet primary
+- ✅ Router: reserve static DHCP lease for the server's MAC → `192.168.1.219`
+- ✅ SSH in as `mitchellch@192.168.1.219`; box is headless
+- ⚪ `apt update && apt full-upgrade`, reboot
 - ⚪ Confirm IPv6 works: `curl -6 ifconfig.io`
 - ⚪ Install baseline: `git curl vim ufw fail2ban unattended-upgrades`
 - ⚪ Configure unattended-upgrades for security patches
@@ -66,16 +66,16 @@
 - ⚪ Network Solutions → azul-devices.com → nameservers set to Cloudflare NS values
 - ⚪ Cloudflare confirms active (via email)
 - ⚪ API token minted, scope `DNS:Edit` on `azul-devices.com`
-- ⚪ Token stored securely for later (`/etc/cloudflare.token` on Pi, chmod 600)
+- ⚪ Token stored securely for later (`/etc/cloudflare.token` on azul-server, chmod 600)
 
 ## P3 — Router + DDNS
 
 **Target:** ½ day
 
-- ⚪ Port forward: WAN 443 → Pi:443 (TCP)
-- ⚪ Port forward: WAN 8883 → Pi:8883 (TCP)
+- ⚪ Port forward: WAN 443 → azul-server:443 (TCP)
+- ⚪ Port forward: WAN 8883 → azul-server:8883 (TCP)
 - ⚪ Confirm UPnP is off (no auto-added rules)
-- ⚪ Test forwarding from external network before certs (e.g. temporary `python3 -m http.server 443` on Pi + phone on cellular hits it)
+- ⚪ Test forwarding from external network before certs (e.g. temporary `python3 -m http.server 443` on azul-server + phone on cellular hits it)
 - ⚪ DDNS script written — polls WAN IP, updates Cloudflare A records if changed
 - ⚪ Script runs every 5 min via systemd timer
 - ⚪ Initial A records: `api.` and `mqtt.` pointing at current WAN IP with TTL 60s
@@ -84,20 +84,20 @@
 
 **Target:** 1 day
 
-- ⚪ Postgres 15 installed via apt
-- ⚪ Postgres listens on `127.0.0.1` only (verified with `ss -tlnp`)
-- ⚪ `azul` role + `azul` database created; credentials match dev
-- ⚪ Repo cloned to `/home/mitch/azul`
+- ⚪ Postgres + Mosquitto up via `docker compose up -d` in `server/`
+- ⚪ Postgres reachable at `localhost:5432` from the server; not exposed to LAN/WAN
+- ⚪ `azul` role + `azul` database created; credentials match dev (default password changed before public exposure)
+- ⚪ Repo cloned to `/home/mitchellch/azul`
 - ⚪ `npx prisma migrate deploy` — schema up to date
-- ⚪ Mosquitto installed
-- ⚪ `/etc/mosquitto/conf.d/azul.conf` — 1883 on 127.0.0.1, 8883 on 0.0.0.0 with cert paths
+- ⚪ Mosquitto `8883` listener added, bound to `0.0.0.0` with cert paths (populated in P5)
 - ⚪ MQTT users created via `mosquitto_passwd` (server + per-firmware fleet)
 - ⚪ Anonymous MQTT access disabled
-- ⚪ Node 22 via nvm on Pi
-- ⚪ Server `.env` populated (DATABASE_URL, MQTT_URL, Auth0 creds, no DEBUG_MODE)
+- ⚪ Node 22 installed from NodeSource (`/usr/bin/node`)
+- ⚪ Server `.env` populated (DATABASE_URL, MQTT_URL, SERVER_PUBLIC_URL, Auth0 creds, no DEBUG_MODE)
 - ⚪ `npm run build` in `server/` produces `dist/`
-- ⚪ systemd unit `azul-server.service` written, enabled, started
-- ⚪ `systemctl status azul-server` → active; `curl http://localhost:3000/health` from Pi → 200
+- ⚪ systemd units `azul-server.service` + `azul-web.service` installed (from `deploy/`), enabled, started
+- ⚪ `systemctl status azul-server` → active; `curl http://localhost:3000/health` from azul-server → 200
+- ⚪ Web (`next start`, SSR) reachable at `http://192.168.1.219:3001`
 
 ## P5 — TLS Certs
 
@@ -119,7 +119,7 @@
 
 - ⚪ New firmware build with MQTT host = `mqtt.azul-devices.com`, port 8883, TLS on, ISRG Root X1 baked in
 - ⚪ Test firmware push to controller #1 (26:7B:8C or similar) via existing OTA path
-- ⚪ Controller #1 reconnects to Pi broker → verify heartbeat in Pi mosquitto logs
+- ⚪ Controller #1 reconnects to azul-server broker → verify heartbeat in mosquitto logs
 - ⚪ Firmware pushed to remaining controllers, one at a time, each verified before next
 - ⚪ `mobile/.env` updated: `EXPO_PUBLIC_API_URL=https://api.azul-devices.com/api`
 - ⚪ Mobile rebuilt via `expo run:android` + installed on device
@@ -137,7 +137,7 @@
 - ⚪ fail2ban: sshd jail active, mosquitto jail active
 - ⚪ SSH: password auth disabled, key-only
 - ⚪ MQTT anonymous auth disabled (verified)
-- ⚪ Nightly `pg_dump` cron running, output to Pi SSD
+- ⚪ Nightly `pg_dump` cron running, output to the server's SSD
 - ⚪ Backup rsync to Backblaze B2 (or equivalent) working
 - ⚪ Backup restore tested end-to-end on a clean database
 - ⚪ UptimeRobot (or equivalent) hitting `/health` every 5 min, email alert on 2 consecutive failures
@@ -147,14 +147,14 @@
 
 ## Open Questions / Decisions Pending
 
-- **UPS or no UPS?** ~$60 keeps Pi + router up through short blackouts. Worth it once controllers are on Pi-hosted MQTT.
+- **UPS or no UPS?** ~$60 keeps the server + router up through short blackouts. Worth it once controllers are on server-hosted MQTT.
 - **Firmware TLS trust store**: bake ISRG Root X1 (Let's Encrypt) only, or also include a fallback cert? Only-ISRG is simplest; fallback means firmware ships knowing how to reach a backup broker.
 - **MQTT auth model**: username+password per fleet, or per-device client certs? Certs are more secure but way more provisioning complexity. Start with u/p, migrate later if needed.
-- **Web app hosting**: on the Pi behind Caddy, or on Cloudflare Pages as a static export? Pages is free and faster, but requires the web app to work as fully static Next.js output. TBD.
+- **Web app TLS fronting**: expose `next start` (3001) directly on the LAN for now, or put Caddy in front terminating TLS on 443 once P5 lands? Static export / Cloudflare Pages is ruled out — the web app is SSR with server-side Auth0 and needs a running Node server.
 
 ---
 
 ## Notes
 
-- Cutover **must** keep laptop server running until at least one controller is confirmed on the Pi. Rollback = firmware config flip back to laptop broker. Do NOT retire laptop until fleet is fully migrated.
-- Deleted `mobile/.env.local` LAN IP override was the source of a full session of "why can't I connect" — see [[mobile-env-local-lan-ip]]. On the Pi, `.env` is the sole config file.
+- Cutover **must** keep laptop server running until at least one controller is confirmed on azul-server. Rollback = firmware config flip back to laptop broker. Do NOT retire laptop until fleet is fully migrated.
+- Deleted `mobile/.env.local` LAN IP override was the source of a full session of "why can't I connect" — see [[mobile-env-local-lan-ip]]. On azul-server, `.env` is the sole config file.

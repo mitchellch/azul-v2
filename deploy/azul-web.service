@@ -1,0 +1,17 @@
+[Unit]
+Description=Azul web app (Next.js SSR)
+After=network-online.target azul-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mitchellch
+WorkingDirectory=/home/mitchellch/azul/web
+EnvironmentFile=/home/mitchellch/azul/web/.env
+# SSR app (server-side Auth0) — must be `next start`, NOT a static export.
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

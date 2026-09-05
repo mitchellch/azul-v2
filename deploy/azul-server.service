@@ -1,0 +1,23 @@
+[Unit]
+Description=Azul API server (Node/Express)
+Documentation=https://github.com/ (docs/design/home-server-hosting-plan.md, deploy-workflow.md)
+After=network-online.target docker.service
+Wants=network-online.target
+# DB + MQTT run as Docker containers (server/docker-compose.yml)
+Requires=docker.service
+
+[Service]
+Type=simple
+User=mitchellch
+WorkingDirectory=/home/mitchellch/azul/server
+EnvironmentFile=/home/mitchellch/azul/server/.env
+# Install Node 22 from NodeSource so /usr/bin/node exists for systemd
+# (nvm paths don't resolve in a non-login systemd unit).
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=3
+# uploads/ holds firmware .bin images + zone photos — must survive restarts.
+ReadWritePaths=/home/mitchellch/azul/server/uploads
+
+[Install]
+WantedBy=multi-user.target
