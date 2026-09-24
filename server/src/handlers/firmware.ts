@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from '../db/client';
 import { HttpError } from '../middleware/errorHandler';
+import { firmwareUploadLimiter } from '../middleware/rateLimit';
 
 const UPLOADS_ROOT = path.resolve(__dirname, '../../uploads/firmware');
 fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
@@ -54,7 +55,7 @@ function requireM2M(req: Request, _res: Response, next: NextFunction) {
 }
 
 // POST /api/admin/firmware — multipart upload (M2M only).
-firmwareRouter.post('/', requireM2M, upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+firmwareRouter.post('/', firmwareUploadLimiter, requireM2M, upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
   const tmpPath = req.file?.path;
   try {
     if (!req.file) throw new HttpError(400, 'No file uploaded');

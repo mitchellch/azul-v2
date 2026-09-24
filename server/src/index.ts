@@ -13,6 +13,13 @@ import { ensureZones } from './lib/ensureZones';
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
+// Behind a reverse proxy (Caddy now; Caddy + Cloudflare after the P7 perimeter
+// forward). Trust the proxy hop(s) so req.ip is the real client rather than the
+// proxy — required for correct rate-limiting and access logs. Bump
+// TRUST_PROXY_HOPS to 2 in .env once Cloudflare fronts the origin
+// (Cloudflare → Caddy → app).
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors());
 app.use(express.json());

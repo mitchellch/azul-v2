@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { apiLimiter } from './middleware/rateLimit';
 import { jwtMiddleware } from './middleware/auth';
 import { requireUser } from './middleware/requireUser';
 import { devicesRouter } from './handlers/devices';
@@ -11,6 +12,9 @@ import { orgsRouter } from './handlers/orgs';
 import { firmwareRouter } from './handlers/firmware';
 
 export const router = Router();
+
+// Global rate limit — before auth so invalid-token floods are throttled too.
+router.use(apiLimiter);
 
 // All /api routes require a valid JWT and a resolved user
 router.use(jwtMiddleware);
